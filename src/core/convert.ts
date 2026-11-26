@@ -37,10 +37,15 @@ import {
 import BN from "bn.js";
 import type { Router } from "./route";
 import type { DustAccount, ScanResult } from "./scan";
+import { measureV1, V1_MAX_ACCOUNTS, V1_MAX_BYTES } from "./v1";
+import { guardReserve, MAX_INSTRUCTION_TRACE, traceLength } from "./wallet-guards";
 
 /** Limity transakcji w formacie v0. */
 export const MAX_TX_BYTES = 1232;
 export const MAX_TX_ACCOUNTS = 64;
+
+/** Format transakcji: v0 (1232 bajty, tabele adresow) albo v1 (4096 bajtow, bez tabel): patrz v1.ts. */
+export type TxFormat = "v0" | "v1";
 
 export interface ConvertOptions {
   owner: PublicKey;
@@ -312,17 +317,29 @@ export interface BatchPlanOptions {
   rentFeeBps: number;
   computeUnitLimit: number;
   computeUnitPriceMicroLamports: number;
+  /** Tabele adresow; uzywane tylko w formacie v0. */
   lookupTables?: AddressLookupTableAccount[];
+  /** Format skladanych transakcji; domyslnie v0. */
+  format?: TxFormat;
+  /** Domyslnie limity wybranego formatu. */
   maxBytes?: number;
   maxAccounts?: number;
   /**
-   * Miejsce zostawiane w kazdej paczce dla portfela. Portfele (m.in. Phantom) dopisuja do
-   * podpisywanej transakcji wlasne instrukcje kontrolne; gdy transakcja jest wypelniona do limitu,
-   * nie maja na nie miejsca i pokazuja ostrzezenie, ze nie moga sprawdzic transakcji. Pozycja,
-   * ktora sama nie miesci sie z tym zapasem (dluga trasa zamiany), dostaje i tak wlasna paczke.
+   * Miejsce zostawiane w kazdej paczce dla portfela. Portfele dopisuja do podpisywanej transakcji
+   * wlasne instrukcje kontrolne; gdy transakcja jest wypelniona do limitu, nie maja na nie miejsca
+   * i pokazuja ostrzezenie, ze nie moga sprawdzic transakcji. Pozycja, ktora sama nie miesci sie
+   * z tym zapasem (dluga trasa zamiany), dostaje i tak wlasna paczke.
    */
   reserveBytes?: number;
   reserveAccounts?: number;
+  /**
+   * Zapas liczony dla kazdej paczki z osobna, na instrukcje kontrolne Phantoma (rosna z liczba
+   * pozycji): patrz wallet-guards.ts. Zastepuje staly zapas i dotyczy takze paczek z jedna pozycja.
+   * Paczka musi tez zmiescic sie z tymi instrukcjami w limicie 64 wykonywanych instrukcji.
+   */
+  walletGuards?: boolean;
+  /** Uzytkownik nie ma konta DUSTER: zalozy je pierwsza sprzedaz (dodatkowe zagniezdzone wywolania). */
+  createsDusterAccount?: boolean;
   /**
    * Limit jednostek obliczen dla paczek z zamiana waluty kwotowania przez agregator: trasa przez
    * zewnetrzne gieldy zuzywa ich wyraznie wiecej niz sama sprzedaz. Domyslnie `computeUnitLimit`.
@@ -350,6 +367,7 @@ export interface Batch {
   instructions: TransactionInstruction[];
   /** Tabele adresow, z ktorymi trzeba zlozyc transakcje: wspolne i wlasne pozycji tej paczki. */
   lookupTables: AddressLookupTableAccount[];
+  format: TxFormat;
   bytes: number;
   accounts: number;
 }
@@ -401,17 +419,27 @@ function assemble(items: ConvertItem[], o: BatchPlanOptions): TransactionInstruc
 
 /** Tabele adresow paczki: wspolne oraz te, ktorych wymagaja jej pozycje (bez powtorzen). */
 function batchTables(items: ConvertItem[], o: BatchPlanOptions): AddressLookupTableAccount[] {
+  if (o.format === "v1") return [];
   const out = new Map<string, AddressLookupTableAccount>();
   for (const t of [...(o.lookupTables ?? []), ...items.flatMap((it) => it.lookupTables ?? [])]) out.set(t.key.toBase58(), t);
   return [...out.values()];
 }
 
-/** Rozmiar zserializowanej transakcji v0 i liczba kont; null, gdy nie da sie jej zlozyc. */
+export interface TxSize {
+  bytes: number;
+  accounts: number;
+  /** Ile kont transakcja otwiera do zapisu. */
+  writable: number;
+}
+
+/** Rozmiar zserializowanej transakcji i liczba kont; null, gdy nie da sie jej zlozyc. */
 export function measure(
   instructions: TransactionInstruction[],
   payer: PublicKey,
   lookupTables: AddressLookupTableAccount[] = [],
-): { bytes: number; accounts: number } | null {
+  format: TxFormat = "v0",
+): TxSize | null {
+  if (format === "v1") return measureV1(instructions, payer);
   try {
     const msg = new TransactionMessage({
       payerKey: payer,
@@ -420,7 +448,13 @@ export function measure(
     }).compileToV0Message(lookupTables);
     const bytes = new VersionedTransaction(msg).serialize().length;
     const looked = msg.addressTableLookups.reduce((s, l) => s + l.writableIndexes.length + l.readonlyIndexes.length, 0);
-    return { bytes, accounts: msg.staticAccountKeys.length + looked };
+    const h = msg.header;
+    const writable =
+      msg.staticAccountKeys.length -
+      h.numReadonlySignedAccounts -
+      h.numReadonlyUnsignedAccounts +
+      msg.addressTableLookups.reduce((s, l) => s + l.writableIndexes.length, 0);
+    return { bytes, accounts: msg.staticAccountKeys.length + looked, writable };
   } catch {
     return null;
   }
@@ -432,25 +466,38 @@ export function assembleBatch(items: ConvertItem[], o: BatchPlanOptions): Transa
 }
 
 /** Rozmiar transakcji zlozonej z podanych pozycji (z otoczka paczki); null, gdy nie da sie jej zlozyc. */
-export function measureBatch(items: ConvertItem[], o: BatchPlanOptions): { bytes: number; accounts: number } | null {
-  return measure(assemble(items, o), o.owner, batchTables(items, o));
+export function measureBatch(items: ConvertItem[], o: BatchPlanOptions): TxSize | null {
+  return measure(assemble(items, o), o.owner, batchTables(items, o), o.format);
 }
 
-/** Czy pozycje mieszcza sie razem w jednej transakcji. */
+function limitsOfFormat(o: BatchPlanOptions): { bytes: number; accounts: number } {
+  const v1 = o.format === "v1";
+  return { bytes: o.maxBytes ?? (v1 ? V1_MAX_BYTES : MAX_TX_BYTES), accounts: o.maxAccounts ?? (v1 ? V1_MAX_ACCOUNTS : MAX_TX_ACCOUNTS) };
+}
+
+/** Czy pozycje mieszcza sie razem w jednej transakcji (bez zapasu dla portfela). */
 export function fitsInTransaction(items: ConvertItem[], o: BatchPlanOptions): boolean {
   const m = measureBatch(items, o);
-  return m !== null && m.bytes <= (o.maxBytes ?? MAX_TX_BYTES) && m.accounts <= (o.maxAccounts ?? MAX_TX_ACCOUNTS);
+  const max = limitsOfFormat(o);
+  return m !== null && m.bytes <= max.bytes && m.accounts <= max.accounts;
 }
 
 /** Dzieli pozycje na paczki mieszczace sie w limitach jednej transakcji. */
 export function planBatches(items: ConvertItem[], o: BatchPlanOptions): Batch[] {
-  // Zapas dla portfela obowiazuje przy dokladaniu kolejnych pozycji; pojedyncza pozycja moze zajac cala transakcje.
-  const roomy: BatchPlanOptions = {
-    ...o,
-    maxBytes: (o.maxBytes ?? MAX_TX_BYTES) - (o.reserveBytes ?? 0),
-    maxAccounts: (o.maxAccounts ?? MAX_TX_ACCOUNTS) - (o.reserveAccounts ?? 0),
+  const max = limitsOfFormat(o);
+  // Zapas dla portfela obowiazuje przy dokladaniu kolejnych pozycji; pojedyncza pozycja, ktora
+  // sie z nim nie miesci, moze zajac cala transakcje.
+  const fits = (list: ConvertItem[]): TxSize | null => {
+    const m = measureBatch(list, o);
+    if (!m || m.bytes > max.bytes || m.accounts > max.accounts) return null;
+    if (list.length === 1 && !o.walletGuards) return m;
+    const reserve = o.walletGuards ? guardReserve(list) : { bytes: o.reserveBytes ?? 0, accounts: o.reserveAccounts ?? 0 };
+    const roomy =
+      m.bytes + reserve.bytes <= max.bytes &&
+      m.accounts + reserve.accounts <= max.accounts &&
+      (!o.walletGuards || traceLength(assemble(list, o), o.owner, list, { createsDusterAccount: o.createsDusterAccount }) <= MAX_INSTRUCTION_TRACE);
+    return roomy || list.length === 1 ? m : null;
   };
-  const fits = (list: ConvertItem[]) => (fitsInTransaction(list, list.length > 1 ? roomy : o) ? measureBatch(list, o) : null);
 
   const batches: Batch[] = [];
   let current: ConvertItem[] = [];
@@ -465,6 +512,7 @@ export function planBatches(items: ConvertItem[], o: BatchPlanOptions): Batch[] 
       expectedSaleLamports: current.reduce((s, it) => s + it.account.quoteLamports, 0n),
       instructions: assemble(current, o),
       lookupTables: batchTables(current, o),
+      format: o.format ?? "v0",
       bytes: m.bytes,
       accounts: m.accounts,
     });

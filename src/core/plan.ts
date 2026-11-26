@@ -17,6 +17,7 @@ import {
   type BatchWrappers,
   type ConvertItem,
   type ConvertOptions,
+  type TxFormat,
 } from "./convert";
 import type { Deployment } from "./deployment";
 import { TOKEN_DECIMALS } from "./pool";
@@ -45,6 +46,18 @@ export const DEFAULT_PLAN_SETTINGS: PlanSettings = {
   priorityMicroLamports: 20_000,
 };
 
+/** Jak portfel uzytkownika przyjmuje transakcje: od tego zalezy ich format i wielkosc paczek. */
+export interface TxProfile {
+  format: TxFormat;
+  /**
+   * Portfel dopisuje do transakcji wlasne instrukcje kontrolne (Phantom na stronie, ktorej jeszcze
+   * nie sprawdzil): kazda paczka zostawia na nie miejsce.
+   */
+  walletGuards: boolean;
+}
+
+export const DEFAULT_TX_PROFILE: TxProfile = { format: "v0", walletGuards: false };
+
 export interface PlanContext {
   owner: PublicKey;
   deployment: Deployment;
@@ -62,6 +75,7 @@ export interface PlanContext {
   wrappers: BatchWrappers;
   quoter: DusterQuoter;
   settings: PlanSettings;
+  tx: TxProfile;
 }
 
 /** Konta, ktore wymiana potrafi obsluzyc. Samego DUSTER i wSOL nie ruszamy. */
@@ -77,6 +91,7 @@ export async function loadPlanContext(
   scan: ScanResult,
   settings: Partial<PlanSettings> = {},
   router?: Router,
+  tx: TxProfile = DEFAULT_TX_PROFILE,
 ): Promise<PlanContext> {
   const owner = scan.owner;
   const cpAmm = new CpAmm(conn);
@@ -103,13 +118,14 @@ export async function loadPlanContext(
     wrappers: await batchWrappers(scan),
     quoter: dusterQuoter(cpAmm, poolState, TOKEN_DECIMALS, blockTime ?? Math.floor(Date.now() / 1000), slot),
     settings: merged,
+    tx,
   };
 }
 
 /**
- * Zapas zostawiany w kazdej transakcji dla portfela. Phantom dopisuje do podpisywanej transakcji
- * instrukcje kontrolne programu Lighthouse (adres programu to 32 bajty, kazda instrukcja ok. 20-30),
- * a przy transakcji wypelnionej do limitu pokazuje ostrzezenie "Failed to simulate".
+ * Staly zapas zostawiany w kazdej transakcji dla portfeli, ktore dopisuja do niej cos od siebie.
+ * Dla Phantoma to za malo: jego instrukcje kontrolne rosna z liczba kont, wiec tam zapas liczymy
+ * dla kazdej paczki z osobna (TxProfile.walletGuards).
  */
 const WALLET_RESERVE_BYTES = 256;
 const WALLET_RESERVE_ACCOUNTS = 2;
@@ -121,6 +137,9 @@ function batchOptions(ctx: PlanContext, forceMinRate?: bigint): BatchPlanOptions
     owner: ctx.owner,
     treasury: d.treasury,
     rentFeeBps: ctx.rentFeeBps,
+    format: ctx.tx.format,
+    walletGuards: ctx.tx.walletGuards,
+    createsDusterAccount: !ctx.hasDusterAccount,
     reserveBytes: WALLET_RESERVE_BYTES,
     reserveAccounts: WALLET_RESERVE_ACCOUNTS,
     computeUnitLimit: ctx.settings.computeUnitLimit,

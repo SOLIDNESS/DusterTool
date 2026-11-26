@@ -21,14 +21,31 @@ export interface SendUpdate {
 
 export const signatureOf = (tx: VersionedTransaction): string => bs58.encode(tx.signatures[0]);
 
-export async function sendAndConfirmAll(
+/** Podpisana transakcja w postaci do wyslania; format (v0, v1) nie ma tu znaczenia. */
+export interface SignedTx {
+  raw: Uint8Array;
+  signature: string;
+}
+
+export const signedFrom = (tx: VersionedTransaction): SignedTx => ({ raw: tx.serialize(), signature: signatureOf(tx) });
+
+export function sendAndConfirmAll(
   conn: Connection,
   txs: VersionedTransaction[],
   lastValidBlockHeight: number,
   onUpdate: (u: SendUpdate) => void = () => {},
 ): Promise<SendUpdate[]> {
-  const raws = txs.map((tx) => tx.serialize());
-  const sigs = txs.map(signatureOf);
+  return sendAndConfirmRaw(conn, txs.map(signedFrom), lastValidBlockHeight, onUpdate);
+}
+
+export async function sendAndConfirmRaw(
+  conn: Connection,
+  txs: SignedTx[],
+  lastValidBlockHeight: number,
+  onUpdate: (u: SendUpdate) => void = () => {},
+): Promise<SendUpdate[]> {
+  const raws = txs.map((tx) => tx.raw);
+  const sigs = txs.map((tx) => tx.signature);
   const results: (SendUpdate | null)[] = txs.map(() => null);
   const pendingIndexes = () => results.map((r, i) => (r ? -1 : i)).filter((i) => i >= 0);
   const finish = (i: number, status: SendStatus, error?: string) => {
