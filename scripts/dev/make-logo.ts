@@ -6,7 +6,8 @@
  *
  * Wynik w assets/logo: SVG i PNG z zoltym tlem (ikona tokena) oraz sama postac na przezroczystym tle.
  * Do tego ikona strony (web/public/favicon.svg, uzywana tez w naglowku): to samo logo przyciete
- * ciasniej wokol postaci, zeby bylo czytelne w malym rozmiarze.
+ * ciasniej wokol postaci, zeby bylo czytelne w malym rozmiarze, oraz sama postac jako modul
+ * web/src/lib/mascot.ts (strona rysuje ja na monecie).
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { deflateSync } from "node:zlib";
@@ -63,6 +64,22 @@ function svg(background: boolean, box: Box = FULL) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${box.x} ${box.y} ${box.size} ${box.size}" shape-rendering="crispEdges">${bg}${rects.join("")}</svg>\n`;
 }
 
+/** Postac dla strony (moneta w naglowku i w okienku): wiersze siatki przyciete do postaci i ich polozenie. */
+function mascotModule() {
+  const all = runs(".");
+  const x0 = Math.min(...all.map((r) => r.x));
+  const x1 = Math.max(...all.map((r) => r.x + r.w));
+  const y0 = Math.min(...all.map((r) => r.y));
+  const y1 = Math.max(...all.map((r) => r.y + 1));
+  const rows = grid.slice(y0, y1).map((r) => r.slice(x0, x1));
+  return [
+    "// Plik generowany przez scripts/dev/make-logo.ts - nie edytuj recznie.",
+    "// Postac z logo: # pylek, o bialko oka, X zrenica, . puste. `x`, `y` to polozenie w siatce `size` x `size`.",
+    `export const MASCOT = { size: ${N}, x: ${x0}, y: ${y0}, rows: ${JSON.stringify(rows, null, 2)} };`,
+    "",
+  ].join("\n");
+}
+
 // --- PNG bez zaleznosci ---
 const CRC = new Uint32Array(256).map((_, n) => {
   let c = n;
@@ -110,6 +127,7 @@ function png(size: number, background: boolean) {
 writeFileSync(`${DIR}/duster-logo.svg`, svg(true));
 writeFileSync(`${DIR}/duster-mascot.svg`, svg(false));
 writeFileSync("web/public/favicon.svg", svg(true, cropBox(5)));
+writeFileSync("web/src/lib/mascot.ts", mascotModule());
 writeFileSync(`${DIR}/duster-logo-960.png`, png(960, true));
 writeFileSync(`${DIR}/duster-logo-480.png`, png(480, true));
 writeFileSync(`${DIR}/duster-mascot-480.png`, png(480, false));
