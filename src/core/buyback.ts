@@ -38,7 +38,8 @@ export async function planBuyback(
     cpAmm.fetchPositionState(d.position),
     conn.getSlot(),
   ]);
-  const blockTime = (await conn.getBlockTime(slot)) ?? Math.floor(Date.now() / 1000);
+  // Dla najswiezszego slotu RPC bywa jeszcze bez czasu bloku; wtedy wystarcza zegar lokalny.
+  const blockTime = (await conn.getBlockTime(slot).catch(() => null)) ?? Math.floor(Date.now() / 1000);
 
   const claimable = BigInt(getUnClaimLpFee(poolState, positionState).feeTokenB.toString());
   const pendingBefore = BigInt(config.pendingStakerLamports.toString());

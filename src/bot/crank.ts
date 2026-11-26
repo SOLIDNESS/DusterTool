@@ -38,7 +38,10 @@ async function tick(conn: Connection, crank: Keypair): Promise<number> {
     log("program wstrzymany, czekam");
     return 600;
   }
-  if (plan.waitSecs > 0) return plan.waitSecs + 5;
+  if (plan.waitSecs > 0) {
+    log(`nastepny buyback za ${plan.waitSecs} s (do odebrania ${sol(plan.claimableLamports)} SOL)`);
+    return plan.waitSecs + 5;
+  }
 
   // Nie palimy oplat na puste transakcje: czekamy, az uzbiera sie sensowna kwota.
   const worthIt = plan.claimableLamports >= MIN_CLAIM || plan.spendLamports >= MIN_CLAIM;
