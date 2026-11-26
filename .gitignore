@@ -1,0 +1,22 @@
+# Klucze prywatne i sekrety: nigdy do repozytorium
+keys/
+*.keypair.json
+.env
+.env.*
+!.env.example
+
+# Zaleznosci i artefakty
+node_modules/
+dist/
+.next/
+target/
+.anchor/
+test-ledger/
+*.log
+.DS_Store
+
+# Wyniki lokalnych testow
+out/
+
+# Wdrozenie na lokalnym walidatorze (ulotne)
+deployments/local.json

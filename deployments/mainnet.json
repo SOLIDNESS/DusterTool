@@ -1,0 +1,15 @@
+{
+  "signatures": {
+    "mint": "5tP2Wm5FDsBRMJmg68CQajovejvBYUFF4Dx9uHA1rCnKw87gVMtsPm9Wt53w9TdAkAxf9bbiwgifw38o1VQDch8u",
+    "pool": "Qk8GX5jGjvQnkkwfEH7bLYty7abeGErsyc941w4nheytpBrsALpFnbrQEfR8YdFC7Wrw8kzTLAxtacqzbA76vfj",
+    "initialize": "5ysA4QV2ftZg8AeQyT4YVAUtMLSrXKX3WKSfsQCHuXM34ZeALcUsvV79EFzpWbcuwVBubXqXS2pqsujKn2Pgpjym",
+    "delegate": "9Qt4TFPs9BYvKfrPXMiZFV3MAefc4fKESCfSDsV6qLK4GvWUme8NtN3Gw98yGnpaJxhh3uTLqmLBWKLcTZB22U1"
+  },
+  "mint": "GuqwZm4HJzVfJpb4QebarNg689K7vvcuMwHTeYFq8khY",
+  "pool": "brzEiUGapR3piQ5Ab5JTGMUu1bfDPRVXCSmXs94MofU",
+  "position": "CG6TgvbU2MF14nByfoh6Bf9Tncqn4LQjQocmG3tshLBN",
+  "positionNftMint": "BmM23XZ2jcd1W6m8wMTnpLAGRSxeAUmZGDpvcF8cpBDF",
+  "positionNftAccount": "CYNttFcZjXPBfEowLPigxZvPzMLvzPjSbQNLHF7cnuMm",
+  "treasury": "GU1t3k117nnqPywzHfBpmbPPeEMPs3k5XxoAYTPzRxak",
+  "lookupTable": "2B7LEVmoxwr2zuAyF8sU9WKhcd6mGcAfNCmRyznJwpQx"
+}

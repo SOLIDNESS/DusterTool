@@ -1,0 +1,21 @@
+[toolchain]
+anchor_version = "0.31.1"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+duster = "5bNbw7Rcx58ybEa6cAZ9W1xa21jXztHhERrqpqM3nXHf"
+
+[programs.mainnet]
+duster = "5bNbw7Rcx58ybEa6cAZ9W1xa21jXztHhERrqpqM3nXHf"
+
+[registry]
+url = "https://api.apr.dev"
+
+# Portfel projektu. Anchor domyslnie siega po ~/.config/solana/id.json,
+# dlatego sciezka jest tu podana jawnie i nie wolno jej usuwac.
+[provider]
+cluster = "localnet"
+wallet = "keys/deployer.json"

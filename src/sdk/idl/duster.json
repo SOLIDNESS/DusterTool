@@ -1,0 +1,1384 @@
+{
+  "address": "5bNbw7Rcx58ybEa6cAZ9W1xa21jXztHhERrqpqM3nXHf",
+  "metadata": {
+    "name": "duster",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Duster: wymiana martwych tokenow na DUSTER, buyback i staking"
+  },
+  "instructions": [
+    {
+      "name": "begin_convert",
+      "discriminator": [
+        94,
+        156,
+        112,
+        188,
+        188,
+        162,
+        7,
+        178
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.duster_mint",
+                "account": "Config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "instructions",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "buyback",
+      "discriminator": [
+        106,
+        117,
+        64,
+        30,
+        56,
+        69,
+        7,
+        45
+      ],
+      "accounts": [
+        {
+          "name": "cranker",
+          "docs": [
+            "Dowolny portfel; placi oplate sieciowa."
+          ],
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.duster_mint",
+                "account": "Config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "stake_vault",
+          "writable": true
+        },
+        {
+          "name": "fee_wsol",
+          "writable": true
+        },
+        {
+          "name": "treasury_wsol",
+          "docs": [
+            "Konto wSOL nalezace do portfela treasury."
+          ],
+          "writable": true
+        },
+        {
+          "name": "pool_authority",
+          "address": "HLnpSz9h2S4hiLQ43rnSD9XkcUThA7B8hQMKmDaiTLcC"
+        },
+        {
+          "name": "pool",
+          "writable": true
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "position_nft_account"
+        },
+        {
+          "name": "token_a_vault",
+          "writable": true
+        },
+        {
+          "name": "token_b_vault",
+          "writable": true
+        },
+        {
+          "name": "duster_mint"
+        },
+        {
+          "name": "wsol_mint",
+          "address": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "cp_amm_program",
+          "address": "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "min_duster_out",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "finish_convert",
+      "discriminator": [
+        150,
+        26,
+        204,
+        221,
+        114,
+        245,
+        215,
+        167
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "session"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.duster_mint",
+                "account": "Config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "treasury",
+          "writable": true
+        },
+        {
+          "name": "swap_wsol",
+          "docs": [
+            "Konto wSOL programu: tedy przychod ze sprzedazy wchodzi do poola.",
+            "Uzytkownik nie potrzebuje wlasnego konta wSOL."
+          ],
+          "writable": true
+        },
+        {
+          "name": "user_duster",
+          "docs": [
+            "Mozna je pominac, gdy transakcja tylko zamyka konta i nie ma przychodu do zamiany."
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "pool_authority",
+          "address": "HLnpSz9h2S4hiLQ43rnSD9XkcUThA7B8hQMKmDaiTLcC"
+        },
+        {
+          "name": "pool",
+          "writable": true
+        },
+        {
+          "name": "token_a_vault",
+          "writable": true
+        },
+        {
+          "name": "token_b_vault",
+          "writable": true
+        },
+        {
+          "name": "duster_mint"
+        },
+        {
+          "name": "wsol_mint",
+          "address": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "cp_amm_program",
+          "address": "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "min_rate",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initialize",
+      "discriminator": [
+        175,
+        175,
+        109,
+        31,
+        13,
+        152,
+        155,
+        237
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "duster_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "duster_mint"
+        },
+        {
+          "name": "wsol_mint",
+          "address": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "name": "pool"
+        },
+        {
+          "name": "position"
+        },
+        {
+          "name": "stake_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  107,
+                  101,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "fee_wsol",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  95,
+                  119,
+                  115,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "swap_wsol",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  119,
+                  97,
+                  112,
+                  95,
+                  119,
+                  115,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "InitParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "stake",
+      "discriminator": [
+        206,
+        176,
+        202,
+        18,
+        200,
+        209,
+        179,
+        108
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.duster_mint",
+                "account": "Config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_stake",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  107,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_duster",
+          "writable": true
+        },
+        {
+          "name": "stake_vault",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "unstake",
+      "discriminator": [
+        90,
+        95,
+        107,
+        42,
+        205,
+        124,
+        50,
+        225
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.duster_mint",
+                "account": "Config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_stake",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  107,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_duster",
+          "writable": true
+        },
+        {
+          "name": "stake_vault",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "shares",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "update_config",
+      "discriminator": [
+        29,
+        158,
+        252,
+        191,
+        10,
+        83,
+        219,
+        99
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.duster_mint",
+                "account": "Config"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "UpdateParams"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Config",
+      "discriminator": [
+        155,
+        12,
+        170,
+        224,
+        30,
+        250,
+        204,
+        130
+      ]
+    },
+    {
+      "name": "ConvertSession",
+      "discriminator": [
+        94,
+        87,
+        203,
+        242,
+        118,
+        30,
+        119,
+        103
+      ]
+    },
+    {
+      "name": "UserStake",
+      "discriminator": [
+        102,
+        53,
+        163,
+        107,
+        9,
+        138,
+        87,
+        153
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "BuybackExecuted",
+      "discriminator": [
+        150,
+        109,
+        157,
+        10,
+        124,
+        24,
+        38,
+        189
+      ]
+    },
+    {
+      "name": "Converted",
+      "discriminator": [
+        48,
+        254,
+        146,
+        135,
+        50,
+        134,
+        136,
+        167
+      ]
+    },
+    {
+      "name": "Staked",
+      "discriminator": [
+        11,
+        146,
+        45,
+        205,
+        230,
+        58,
+        213,
+        240
+      ]
+    },
+    {
+      "name": "Unstaked",
+      "discriminator": [
+        27,
+        179,
+        156,
+        215,
+        47,
+        71,
+        195,
+        7
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "Paused",
+      "msg": "Program is paused"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidParameter",
+      "msg": "Parameter out of the allowed range"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidPool",
+      "msg": "Pool is not the DUSTER/SOL Meteora DAMM v2 pool"
+    },
+    {
+      "code": 6003,
+      "name": "MissingFinish",
+      "msg": "begin_convert must be followed by finish_convert in the same transaction"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidTokenAccount",
+      "msg": "Account is not a token account owned by the user"
+    },
+    {
+      "code": 6005,
+      "name": "DuplicateTokenAccount",
+      "msg": "The same token account was passed more than once"
+    },
+    {
+      "code": 6006,
+      "name": "SlippageExceeded",
+      "msg": "Received less DUSTER than the minimum accepted amount"
+    },
+    {
+      "code": 6007,
+      "name": "BuybackTooEarly",
+      "msg": "Too early for the next buyback"
+    },
+    {
+      "code": 6008,
+      "name": "BelowMinimum",
+      "msg": "Amount is below the minimum"
+    },
+    {
+      "code": 6009,
+      "name": "InsufficientShares",
+      "msg": "Not enough shares"
+    },
+    {
+      "code": 6010,
+      "name": "RemainderBelowMinimum",
+      "msg": "After a withdrawal the remaining stake must be zero or at least the minimum"
+    },
+    {
+      "code": 6011,
+      "name": "MathOverflow",
+      "msg": "Math overflow"
+    },
+    {
+      "code": 6012,
+      "name": "ZeroShares",
+      "msg": "Deposit is too small to receive a single share"
+    },
+    {
+      "code": 6013,
+      "name": "MissingSwapAccounts",
+      "msg": "There are sale proceeds to swap but the user's DUSTER account was not provided"
+    }
+  ],
+  "types": [
+    {
+      "name": "BuybackExecuted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "claimed_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "treasury_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "spent_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "duster_bought",
+            "type": "u64"
+          },
+          {
+            "name": "pending_staker_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Config",
+      "docs": [
+        "Jedyna instancja konfiguracji i stanu dla danego tokena (PDA: \"config\" + mint)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury",
+            "docs": [
+              "Zwykly portfel, na ktory trafia fee od rentu oraz nasza czesc oplat z poola (jako wSOL)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "duster_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "pool",
+            "docs": [
+              "Pool DUSTER/SOL na Meteora DAMM v2 (token A = DUSTER, token B = wSOL)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "position",
+            "docs": [
+              "Pozycja LP, z ktorej program odbiera oplaty."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "stake_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_wsol",
+            "type": "pubkey"
+          },
+          {
+            "name": "rent_fee_bps",
+            "docs": [
+              "Fee od odzyskanego rentu, w punktach bazowych (500 = 5%)."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "staker_share_bps",
+            "docs": [
+              "Czesc oplat z poola przeznaczana na buyback dla stakujacych (5000 = polowa)."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "buyback_interval",
+            "docs": [
+              "Minimalny odstep miedzy buybackami, w sekundach."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "release_duration",
+            "docs": [
+              "Czas, przez ktory uwalnia sie nagroda z jednego buybacku, w sekundach."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "max_buyback_lamports",
+            "docs": [
+              "Limit SOL wydawanego w jednym buybacku; reszta czeka na kolejne."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "min_stake",
+            "docs": [
+              "Minimalna wplata do stakingu i minimalna pozostawiona kwota."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "paused",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "total_shares",
+            "type": "u64"
+          },
+          {
+            "name": "total_assets",
+            "docs": [
+              "DUSTER w skarbcu stakingu wedlug ksiegowania programu (z czescia jeszcze nieuwolniona)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "unreleased",
+            "docs": [
+              "Nieuwolniona nagroda wedlug stanu na `stream_updated`."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "stream_updated",
+            "type": "i64"
+          },
+          {
+            "name": "stream_end",
+            "type": "i64"
+          },
+          {
+            "name": "last_buyback",
+            "type": "i64"
+          },
+          {
+            "name": "pending_staker_lamports",
+            "docs": [
+              "Czesc stakujacych odebrana z poola, ktora czeka na zamiane na DUSTER."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "total_conversions",
+            "type": "u64"
+          },
+          {
+            "name": "total_accounts_closed",
+            "type": "u64"
+          },
+          {
+            "name": "total_rent_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "total_rent_fee_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "total_sale_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "total_duster_to_users",
+            "type": "u64"
+          },
+          {
+            "name": "total_fees_claimed_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "total_treasury_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "total_buyback_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "total_buyback_duster",
+            "type": "u64"
+          },
+          {
+            "name": "swap_wsol",
+            "docs": [
+              "Konto wSOL programu, przez ktore przychod z wymiany wchodzi do poola.",
+              "Miedzy transakcjami jest puste: kazda wymiana wplaca i od razu zamienia dokladnie te sama kwote."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "reserved",
+            "type": {
+              "array": [
+                "u64",
+                4
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "ConvertSession",
+      "docs": [
+        "Konto tymczasowe jednej wymiany. Powstaje w `begin_convert` i jest zamykane",
+        "w `finish_convert` tej samej transakcji, wiec jego depozyt wraca od razu."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "start_lamports",
+            "docs": [
+              "Saldo SOL uzytkownika na poczatku wymiany."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "rent_lamports",
+            "docs": [
+              "Suma depozytow (rentu) na kontach tokenow zgloszonych do zamkniecia."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "accounts",
+            "type": "u16"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Converted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "accounts_closed",
+            "type": "u16"
+          },
+          {
+            "name": "rent_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "rent_fee_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "sale_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "duster_out",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InitParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "treasury",
+            "type": "pubkey"
+          },
+          {
+            "name": "rent_fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "staker_share_bps",
+            "type": "u16"
+          },
+          {
+            "name": "buyback_interval",
+            "type": "i64"
+          },
+          {
+            "name": "release_duration",
+            "type": "i64"
+          },
+          {
+            "name": "max_buyback_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "min_stake",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Staked",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "shares",
+            "type": "u64"
+          },
+          {
+            "name": "total_shares",
+            "type": "u64"
+          },
+          {
+            "name": "total_assets",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Unstaked",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "shares",
+            "type": "u64"
+          },
+          {
+            "name": "total_shares",
+            "type": "u64"
+          },
+          {
+            "name": "total_assets",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "UpdateParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "new_admin",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "treasury",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "position",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "rent_fee_bps",
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "staker_share_bps",
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "buyback_interval",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "release_duration",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "max_buyback_lamports",
+            "type": {
+              "option": "u64"
+            }
+          },
+          {
+            "name": "min_stake",
+            "type": {
+              "option": "u64"
+            }
+          },
+          {
+            "name": "paused",
+            "type": {
+              "option": "bool"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "UserStake",
+      "docs": [
+        "Udzialy jednego stakujacego (PDA: \"stake\" + config + portfel)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "shares",
+            "type": "u64"
+          },
+          {
+            "name": "deposited",
+            "docs": [
+              "Suma wplat pomniejszona o wyplaty; sluzy tylko do pokazania zysku w aplikacji."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}
