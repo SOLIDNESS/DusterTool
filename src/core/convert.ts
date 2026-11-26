@@ -316,6 +316,14 @@ export interface BatchPlanOptions {
   maxBytes?: number;
   maxAccounts?: number;
   /**
+   * Miejsce zostawiane w kazdej paczce dla portfela. Portfele (m.in. Phantom) dopisuja do
+   * podpisywanej transakcji wlasne instrukcje kontrolne; gdy transakcja jest wypelniona do limitu,
+   * nie maja na nie miejsca i pokazuja ostrzezenie, ze nie moga sprawdzic transakcji. Pozycja,
+   * ktora sama nie miesci sie z tym zapasem (dluga trasa zamiany), dostaje i tak wlasna paczke.
+   */
+  reserveBytes?: number;
+  reserveAccounts?: number;
+  /**
    * Limit jednostek obliczen dla paczek z zamiana waluty kwotowania przez agregator: trasa przez
    * zewnetrzne gieldy zuzywa ich wyraznie wiecej niz sama sprzedaz. Domyslnie `computeUnitLimit`.
    */
@@ -436,7 +444,13 @@ export function fitsInTransaction(items: ConvertItem[], o: BatchPlanOptions): bo
 
 /** Dzieli pozycje na paczki mieszczace sie w limitach jednej transakcji. */
 export function planBatches(items: ConvertItem[], o: BatchPlanOptions): Batch[] {
-  const fits = (list: ConvertItem[]) => (fitsInTransaction(list, o) ? measureBatch(list, o) : null);
+  // Zapas dla portfela obowiazuje przy dokladaniu kolejnych pozycji; pojedyncza pozycja moze zajac cala transakcje.
+  const roomy: BatchPlanOptions = {
+    ...o,
+    maxBytes: (o.maxBytes ?? MAX_TX_BYTES) - (o.reserveBytes ?? 0),
+    maxAccounts: (o.maxAccounts ?? MAX_TX_ACCOUNTS) - (o.reserveAccounts ?? 0),
+  };
+  const fits = (list: ConvertItem[]) => (fitsInTransaction(list, list.length > 1 ? roomy : o) ? measureBatch(list, o) : null);
 
   const batches: Batch[] = [];
   let current: ConvertItem[] = [];

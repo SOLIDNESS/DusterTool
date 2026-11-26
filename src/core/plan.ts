@@ -106,6 +106,14 @@ export async function loadPlanContext(
   };
 }
 
+/**
+ * Zapas zostawiany w kazdej transakcji dla portfela. Phantom dopisuje do podpisywanej transakcji
+ * instrukcje kontrolne programu Lighthouse (adres programu to 32 bajty, kazda instrukcja ok. 20-30),
+ * a przy transakcji wypelnionej do limitu pokazuje ostrzezenie "Failed to simulate".
+ */
+const WALLET_RESERVE_BYTES = 256;
+const WALLET_RESERVE_ACCOUNTS = 2;
+
 /** Ustawienia paczek wspolne dla calej wymiany. */
 function batchOptions(ctx: PlanContext, forceMinRate?: bigint): BatchPlanOptions {
   const d = ctx.deployment;
@@ -113,6 +121,8 @@ function batchOptions(ctx: PlanContext, forceMinRate?: bigint): BatchPlanOptions
     owner: ctx.owner,
     treasury: d.treasury,
     rentFeeBps: ctx.rentFeeBps,
+    reserveBytes: WALLET_RESERVE_BYTES,
+    reserveAccounts: WALLET_RESERVE_ACCOUNTS,
     computeUnitLimit: ctx.settings.computeUnitLimit,
     routedComputeUnitLimit: ctx.settings.routedComputeUnitLimit,
     computeUnitPriceMicroLamports: ctx.settings.priorityMicroLamports,

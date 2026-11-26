@@ -3,6 +3,7 @@
  * transakcje; dopiero flaga --send ja wysyla. Uzywane sa wylacznie portfele z keys/.
  *
  *   npx tsx scripts/live/duster.ts status
+ *   npx tsx scripts/live/duster.ts audit             kontrola ksiag programu i lista stakujacych (tylko odczyt)
  *   npx tsx scripts/live/duster.ts init              (deployer) konfiguracja programu, delegacja oplat, tabela adresow
  *   npx tsx scripts/live/duster.ts buy 0.05          (tester)   zakup tokena na poolu
  *   npx tsx scripts/live/duster.ts stake 100000      (tester)
@@ -38,8 +39,10 @@ import { jupiterRouter } from "../../src/core/route";
 import { scanWallet } from "../../src/core/scan";
 import {
   dusterProgram,
+  effectiveAssets,
   initializeIx,
   sharesToAssets,
+  unreleasedAt,
   stakeIx,
   UNSTAKE_ALL,
   unstakeIx,
@@ -92,6 +95,84 @@ async function status(conn: Connection, d: Deployment) {
     "buyback razem (DUSTER)": ui(c.totalBuybackDuster),
     "treasury z poola (SOL)": sol(BigInt(c.totalTreasuryLamports.toString())),
   });
+}
+
+/**
+ * Kontrola ksiag programu na zywo (tylko odczyt): czy to, co program ma zapisane, zgadza sie
+ * z tym, co faktycznie lezy na jego kontach, i ile przypada kazdemu stakujacemu.
+ */
+async function audit(conn: Connection, d: Deployment) {
+  const program = dusterProgram(conn);
+  const big = (v: { toString(): string }) => BigInt(v.toString());
+  const tokens = async (account: PublicKey) => BigInt((await conn.getTokenAccountBalance(account).catch(() => null))?.value.amount ?? "0");
+  const treasuryWsol = getAssociatedTokenAddressSync(NATIVE_MINT, d.treasury);
+  const [c, allStakes, vault, feeWsol, swapWsol, treasuryWsolBalance, treasurySol] = await Promise.all([
+    program.account.config.fetch(d.refs.config),
+    program.account.userStake.all(),
+    tokens(d.refs.stakeVault),
+    tokens(d.refs.feeWsol),
+    tokens(d.refs.swapWsol),
+    tokens(treasuryWsol),
+    conn.getBalance(d.treasury),
+  ]);
+  // Tylko konta stakingu nalezace do naszej konfiguracji.
+  const stakes = allStakes.filter((s) => userStakePda(d.refs.config, s.account.owner).equals(s.publicKey));
+  const now = Date.now() / 1000;
+  const totalShares = big(c.totalShares);
+  const totalAssets = big(c.totalAssets);
+  const locked = unreleasedAt(c, now);
+  const effective = effectiveAssets(c, now);
+  const pending = big(c.pendingStakerLamports);
+  const claimed = big(c.totalFeesClaimedLamports);
+  const toTreasury = big(c.totalTreasuryLamports);
+  const spent = big(c.totalBuybackLamports);
+
+  console.log("Stakujacy:");
+  let sharesSum = 0n;
+  let valueSum = 0n;
+  const rows = stakes
+    .map((s) => ({ owner: s.account.owner.toBase58(), shares: big(s.account.shares), deposited: big(s.account.deposited) }))
+    .sort((x, y) => (y.shares > x.shares ? 1 : -1));
+  for (const r of rows) {
+    const value = sharesToAssets(c, r.shares, now);
+    sharesSum += r.shares;
+    valueSum += value;
+    const share = totalShares > 0n ? (Number((r.shares * 1_000_000n) / totalShares) / 10_000).toFixed(2) : "0";
+    console.log(`  ${r.owner}  ${share}% puli  wplacone ${ui(r.deposited)}  do wyplaty teraz ${ui(value)}  nagrody ${ui(value - r.deposited)}`);
+  }
+  if (!rows.length) console.log("  (nikt nie stakuje)");
+
+  let failed = 0;
+  const check = (name: string, ok: boolean, detail: string) => {
+    if (!ok) failed++;
+    console.log(`  ${ok ? "OK  " : "BLAD"} ${name}: ${detail}`);
+  };
+  console.log("\nKontrola:");
+  check("udzialy stakujacych sumuja sie do puli", sharesSum === totalShares, `${sharesSum} z ${totalShares}`);
+  check("skarbiec stakingu ma co najmniej tyle DUSTER, ile program jest winien", vault >= totalAssets, `w skarbcu ${ui(vault)}, zapisane ${ui(totalAssets)}`);
+  check(
+    "suma wyplat wszystkich stakujacych miesci sie w puli",
+    valueSum <= effective && effective + locked <= totalAssets,
+    `do wyplaty ${ui(valueSum)}, uwolnione ${ui(effective)}, jeszcze nieuwolnione ${ui(locked)}`,
+  );
+  check("SOL czekajacy na odkup lezy na koncie programu", feeWsol >= pending, `na koncie ${sol(feeWsol)}, czeka ${sol(pending)}`);
+  check("konto przejsciowe wymiany jest puste", swapWsol === 0n, sol(swapWsol));
+  check(
+    "oplaty z poola rozliczone co do lamporta",
+    claimed === toTreasury + spent + pending,
+    `odebrane ${sol(claimed)} = treasury ${sol(toTreasury)} + odkup ${sol(spent)} + czeka ${sol(pending)}`,
+  );
+  // Kazdy buyback zaokragla czesc stakujacych w dol, wiec moze im brakowac najwyzej 1 lamporta na buyback.
+  const stakerSide = spent + pending;
+  const rounding = (claimed * BigInt(c.stakerShareBps)) / 10_000n - stakerSide;
+  check(
+    `podzial zgodny z konfiguracja (${c.stakerShareBps / 100}% dla stakujacych)`,
+    rounding >= 0n && rounding <= 10_000n,
+    `stakujacy ${sol(stakerSide)}, treasury ${sol(toTreasury)}, zaokraglenia ${rounding} lamportow`,
+  );
+  console.log(`\nTreasury ${d.treasury.toBase58()}: ${sol(treasurySol)} SOL + ${sol(treasuryWsolBalance)} wSOL`);
+  console.log(failed ? `\n${failed} kontroli NIE przeszlo.` : "\nWszystkie kontrole przeszly.");
+  if (failed) process.exitCode = 1;
 }
 
 async function init(conn: Connection) {
@@ -256,6 +337,7 @@ async function main() {
   if (cmd === "init") return init(conn);
   const d = loadDeployment();
   if (cmd === "status" || !cmd) return status(conn, d);
+  if (cmd === "audit") return audit(conn, d);
   if (cmd === "buy") return buy(conn, d, Number(arg ?? 0.01));
   if (cmd === "stake") return stake(conn, d, Number(arg ?? 1000));
   if (cmd === "unstake") return unstake(conn, d);
