@@ -5,6 +5,8 @@
  *   npx tsx scripts/dev/make-logo.ts
  *
  * Wynik w assets/logo: SVG i PNG z zoltym tlem (ikona tokena) oraz sama postac na przezroczystym tle.
+ * Do tego ikona strony (web/public/favicon.svg, uzywana tez w naglowku): to samo logo przyciete
+ * ciasniej wokol postaci, zeby bylo czytelne w malym rozmiarze.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { deflateSync } from "node:zlib";
@@ -36,10 +38,29 @@ function runs(skip: string) {
   return out;
 }
 
-function svg(background: boolean) {
+interface Box {
+  x: number;
+  y: number;
+  size: number;
+}
+const FULL: Box = { x: 0, y: 0, size: N };
+
+/** Kwadrat wokol postaci z marginesem `margin` pikseli siatki. */
+function cropBox(margin: number): Box {
+  const all = runs(".");
+  const x0 = Math.min(...all.map((r) => r.x));
+  const x1 = Math.max(...all.map((r) => r.x + r.w));
+  const y0 = Math.min(...all.map((r) => r.y));
+  const y1 = Math.max(...all.map((r) => r.y + 1));
+  const size = Math.min(N, Math.max(x1 - x0, y1 - y0) + 2 * margin);
+  const clamp = (v: number) => Math.max(0, Math.min(N - size, v));
+  return { x: clamp(Math.round((x0 + x1 - size) / 2)), y: clamp(Math.round((y0 + y1 - size) / 2)), size };
+}
+
+function svg(background: boolean, box: Box = FULL) {
   const rects = runs(".").map((r) => `<rect x="${r.x}" y="${r.y}" width="${r.w}" height="1" fill="${hex(COLORS[r.ch])}"/>`);
-  const bg = background ? `<rect width="${N}" height="${N}" fill="${hex(COLORS["."])}"/>` : "";
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${N} ${N}" shape-rendering="crispEdges">${bg}${rects.join("")}</svg>\n`;
+  const bg = background ? `<rect x="${box.x}" y="${box.y}" width="${box.size}" height="${box.size}" fill="${hex(COLORS["."])}"/>` : "";
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${box.x} ${box.y} ${box.size} ${box.size}" shape-rendering="crispEdges">${bg}${rects.join("")}</svg>\n`;
 }
 
 // --- PNG bez zaleznosci ---
@@ -88,6 +109,7 @@ function png(size: number, background: boolean) {
 
 writeFileSync(`${DIR}/duster-logo.svg`, svg(true));
 writeFileSync(`${DIR}/duster-mascot.svg`, svg(false));
+writeFileSync("web/public/favicon.svg", svg(true, cropBox(5)));
 writeFileSync(`${DIR}/duster-logo-960.png`, png(960, true));
 writeFileSync(`${DIR}/duster-logo-480.png`, png(480, true));
 writeFileSync(`${DIR}/duster-mascot-480.png`, png(480, false));
