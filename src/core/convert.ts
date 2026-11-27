@@ -36,7 +36,7 @@ import {
 } from "@solana/web3.js";
 import BN from "bn.js";
 import type { Router } from "./route";
-import type { DustAccount, ScanResult } from "./scan";
+import { isSale, type DustAccount, type ScanResult } from "./scan";
 import { measureV1, V1_MAX_ACCOUNTS, V1_MAX_BYTES } from "./v1";
 import { guardReserve, MAX_INSTRUCTION_TRACE, traceLength } from "./wallet-guards";
 
@@ -487,6 +487,10 @@ export function fitsInTransaction(items: ConvertItem[], o: BatchPlanOptions): bo
 /** Dzieli pozycje na paczki mieszczace sie w limitach jednej transakcji. */
 export function planBatches(items: ConvertItem[], o: BatchPlanOptions): Batch[] {
   const max = limitsOfFormat(o);
+  // Konto DUSTER zaklada pierwsza paczka, ktora cos kupuje (paczki z zapasem dla portfela ida po
+  // kolei), wiec tylko ona potrzebuje miejsca na dodatkowe zagniezdzone wywolania. Gdyby ta paczka
+  // odpadla, kolejna jest sprawdzana jeszcze raz przed podpisem, na wyniku symulacji.
+  let dusterAccountPending = o.createsDusterAccount ?? false;
   // Zapas dla portfela obowiazuje przy dokladaniu kolejnych pozycji; pojedyncza pozycja, ktora
   // sie z nim nie miesci, moze zajac cala transakcje.
   const fits = (list: ConvertItem[]): TxSize | null => {
@@ -497,7 +501,7 @@ export function planBatches(items: ConvertItem[], o: BatchPlanOptions): Batch[] 
     const roomy =
       m.bytes + reserve.bytes <= max.bytes &&
       m.accounts + reserve.accounts <= max.accounts &&
-      (!o.walletGuards || traceLength(assemble(list, o), o.owner, list, { createsDusterAccount: o.createsDusterAccount }) <= MAX_INSTRUCTION_TRACE);
+      (!o.walletGuards || traceLength(assemble(list, o), o.owner, list, { createsDusterAccount: dusterAccountPending }) <= MAX_INSTRUCTION_TRACE);
     return roomy || list.length === 1 ? m : null;
   };
 
@@ -518,6 +522,7 @@ export function planBatches(items: ConvertItem[], o: BatchPlanOptions): Batch[] 
       bytes: m.bytes,
       accounts: m.accounts,
     });
+    if (o.rentToDuster || current.some((it) => isSale(it.account.kind))) dusterAccountPending = false;
     current = [];
   };
 

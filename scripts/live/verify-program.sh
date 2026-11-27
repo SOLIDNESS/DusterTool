@@ -30,7 +30,8 @@ for arg in "$@"; do [ "$arg" = "--send" ] && SEND=1; done
 
 REPO_URL="${REPO_URL:-https://github.com/SOLIDNESS/DusterTool}"
 LIBRARY=duster
-DEPLOYER_KEY=keys/deployer.json
+# Sciezka bezwzgledna: solana-verify przechodzi do sklonowanego repo, zanim otworzy klucz.
+DEPLOYER_KEY="$PWD/keys/deployer.json"
 PROGRAM_ID=$(node -e 'console.log(require("./src/sdk/idl/duster.json").address)')
 SRC=out/verify-src
 SO=target/deploy/duster.so
@@ -82,7 +83,8 @@ case "$CMD" in
       echo "Zgodne. Dodaj --send, zeby zapisac dane weryfikacji w sieci (podpisuje $DEPLOYER) i zlecic sprawdzenie."
       exit 0
     fi
-    verify verify-from-repo --skip-build -y -u "$RPC_URL" -k "$DEPLOYER_KEY" \
+    # solana-verify zawsze czyta plik konfiguracyjny solana-cli; dostaje projektowy, nie ten z komputera.
+    verify verify-from-repo --skip-build -y -u "$RPC_URL" -k "$DEPLOYER_KEY" --config "$PWD/out/solana-cli.yml" \
       --program-id "$PROGRAM_ID" --library-name "$LIBRARY" --commit-hash "$COMMIT" "$REPO_URL" 2>&1 | hide_key
     verify remote submit-job -u "$RPC_URL" --program-id "$PROGRAM_ID" --uploader "$DEPLOYER" 2>&1 | hide_key
     ;;

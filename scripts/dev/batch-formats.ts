@@ -1,7 +1,9 @@
 /**
  * Porownanie planu wymiany dla portfela w trzech wariantach: zwykly (v0), v0 z zapasem na
  * instrukcje kontrolne Phantoma i v1 z tym zapasem. Niczego nie wysyla.
- * Uzycie: tsx scripts/dev/batch-formats.ts <adres portfela>
+ * Uzycie: tsx scripts/dev/batch-formats.ts <adres portfela> [--sim] [--rent-duster]
+ *   --sim          symuluje paczki v1 i podaje faktyczna dlugosc sladu instrukcji
+ *   --rent-duster  plan z rentem zamienianym na DUSTER (finish_convert_all)
  */
 import { PublicKey } from "@solana/web3.js";
 import { buildItems, isConvertible, loadPlanContext, planConversion, type TxProfile } from "../../src/core/plan";
@@ -23,7 +25,7 @@ async function main() {
   const owner = new PublicKey(process.argv[2]);
   const scan = await scanWallet(conn, owner);
   for (const [name, tx] of PROFILES) {
-    const ctx = await loadPlanContext(conn, d, scan, {}, undefined, tx);
+    const ctx = await loadPlanContext(conn, d, scan, { rentToDuster: process.argv.includes("--rent-duster") }, undefined, tx);
     const items = await buildItems(ctx, scan.accounts.filter((a) => isConvertible(a, d)));
     const plan = planConversion(ctx, items);
     console.log(`${name}: ${items.length} pozycji w ${plan.batches.length} transakcjach`);
