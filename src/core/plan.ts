@@ -271,6 +271,21 @@ function swapAmounts(ctx: PlanContext, batches: Batch[]): bigint[] {
 }
 
 /**
+ * Wpisuje do paczek kurs minimalny liczony z biezacego stanu poola i zwraca go (0, gdy zadna z nich
+ * nie kupuje DUSTER). Wycena z chwili skanu starzeje sie: gdy na tokenie jest ruch i cena wzrosnie
+ * o wiecej niz tolerancja, program odrzuca zamiane. Dlatego kurs odswiezamy tuz przed podpisem.
+ */
+export async function refreshMinRate(conn: Connection, ctx: PlanContext, batches: Batch[]): Promise<bigint> {
+  const amounts = swapAmounts(ctx, batches);
+  if (!amounts.some((a) => a > 0n)) return 0n;
+  const cpAmm = new CpAmm(conn);
+  const [poolState, slot] = await Promise.all([withRetry(() => cpAmm.fetchPoolState(ctx.deployment.pool)), withRetry(() => conn.getSlot())]);
+  const blockTime = await withRetry(() => conn.getBlockTime(slot)).catch(() => null);
+  const quoter = dusterQuoter(cpAmm, poolState, TOKEN_DECIMALS, blockTime ?? Math.floor(Date.now() / 1000), slot);
+  return applyMinRate(batches, quoteBatches(amounts, quoter, ctx.settings.swapSlippageBps));
+}
+
+/**
  * Dzieli pozycje na transakcje i wycenia je. `forceMinRate` pozwala zlozyc
  * paczki zastepcze z kursem minimalnym ustalonym wczesniej dla calej wymiany.
  */
