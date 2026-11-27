@@ -5,6 +5,7 @@
   "scripts": {
     "keys": "tsx scripts/gen-keys.ts",
     "balances": "tsx scripts/balances.ts",
+    "stats": "tsx scripts/live/stats.ts",
     "scan": "tsx scripts/scan.ts",
     "simulate": "tsx scripts/simulate-convert.ts",
     "typecheck": "tsc --noEmit && tsc -p web --noEmit",
