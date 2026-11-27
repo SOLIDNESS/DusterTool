@@ -16,6 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { planBuyback } from "../core/buyback";
 import { parseDeployment } from "../core/deployment";
+import { MIN_BUYBACK_LAMPORTS } from "../core/pool";
 import { sendAndConfirmAll } from "../core/send";
 
 // Katalog projektu: bot uruchamiamy z niego (takze w wersji zbudowanej do dist/).
@@ -23,13 +24,18 @@ const ROOT = process.cwd();
 const RPC_URL = process.env.RPC_URL ?? "https://api.mainnet-beta.solana.com";
 const KEYPAIR = process.env.CRANK_KEYPAIR ?? path.join(ROOT, "keys", "crank.json");
 const DEPLOYMENT = process.env.DEPLOYMENT ?? "test";
-const MIN_CLAIM = BigInt(process.env.MIN_CLAIM_LAMPORTS ?? 2_000_000);
+const MIN_CLAIM = process.env.MIN_CLAIM_LAMPORTS ? BigInt(process.env.MIN_CLAIM_LAMPORTS) : MIN_BUYBACK_LAMPORTS;
+// Gdy termin buybacku minal, a oplat jest jeszcze za malo, sprawdzamy co minute: na stronie
+// licznik stoi wtedy na zerze i kazda transakcja w poolu moze przekroczyc prog.
+const RECHECK_SECS = 60;
 const PRIORITY = Number(process.env.PRIORITY_MICROLAMPORTS ?? 20_000);
 const ONCE = process.argv.includes("--once");
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const log = (msg: string) => console.log(`${new Date().toISOString()} ${msg}`);
 const sol = (l: bigint) => (Number(l) / 1e9).toFixed(6);
+
+let lastTooLittleLog = 0;
 
 async function tick(conn: Connection, crank: Keypair): Promise<number> {
   const d = parseDeployment(JSON.parse(fs.readFileSync(path.join(ROOT, "deployments", `${DEPLOYMENT}.json`), "utf8")));
@@ -46,8 +52,12 @@ async function tick(conn: Connection, crank: Keypair): Promise<number> {
   // Nie palimy oplat na puste transakcje: czekamy, az uzbiera sie sensowna kwota.
   const worthIt = plan.claimableLamports >= MIN_CLAIM || plan.spendLamports >= MIN_CLAIM;
   if (!worthIt) {
-    log(`za malo do odebrania (${sol(plan.claimableLamports)} SOL), sprawdze za 10 min`);
-    return 600;
+    // Jedna linia na 10 minut zamiast co minute.
+    if (Date.now() - lastTooLittleLog >= 600_000) {
+      log(`za malo do odebrania (${sol(plan.claimableLamports)} SOL), sprawdzam co ${RECHECK_SECS} s`);
+      lastTooLittleLog = Date.now();
+    }
+    return RECHECK_SECS;
   }
 
   const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash();

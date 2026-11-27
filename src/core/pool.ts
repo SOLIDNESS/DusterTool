@@ -17,6 +17,12 @@ import {
 import BN from "bn.js";
 
 export const TOKEN_DECIMALS = 6;
+
+/**
+ * Najmniejsza kwota oplat z poola, przy ktorej bot wykonuje buyback (lamporty); ponizej czeka,
+ * zeby nie palic oplat sieciowych na puste transakcje. Strona pokazuje wtedy "waiting".
+ */
+export const MIN_BUYBACK_LAMPORTS = 2_000_000n;
 export const SOL_DECIMALS = 9;
 /** Podaz jak na pump.fun: 1 mld tokenow z 6 miejscami po przecinku. */
 export const TOTAL_SUPPLY_UI = 1_000_000_000;
