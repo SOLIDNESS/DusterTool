@@ -33,6 +33,10 @@ const discriminator = (name: string): Buffer => {
 };
 const BEGIN_CONVERT = discriminator("begin_convert");
 const FINISH_CONVERT = discriminator("finish_convert");
+const FINISH_CONVERT_ALL = discriminator("finish_convert_all");
+
+const isFinish = (ix: TransactionInstruction): boolean =>
+  ix.programId.equals(DUSTER_PROGRAM_ID) && (ix.data.subarray(0, 8).equals(FINISH_CONVERT) || ix.data.subarray(0, 8).equals(FINISH_CONVERT_ALL));
 
 const ro = (pubkey: PublicKey) => ({ pubkey, isSigner: false, isWritable: false });
 const rw = (pubkey: PublicKey) => ({ pubkey, isSigner: false, isWritable: true });
@@ -52,15 +56,20 @@ export function beginConvertInstruction(user: PublicKey, config: PublicKey, toke
   });
 }
 
+/**
+ * `all = true` to finish_convert_all: na DUSTER idzie nie tylko przychod ze sprzedazy, ale i
+ * odzyskane depozyty (po odjeciu fee). Konta sa te same.
+ */
 export function finishConvertInstruction(
   user: PublicKey,
   r: PoolRefs,
   treasury: PublicKey,
   minRate: bigint,
   withSwap: boolean,
+  all = false,
 ): TransactionInstruction {
   const data = Buffer.alloc(16);
-  FINISH_CONVERT.copy(data, 0);
+  (all ? FINISH_CONVERT_ALL : FINISH_CONVERT).copy(data, 0);
   data.writeBigUInt64LE(minRate, 8);
   return new TransactionInstruction({
     programId: DUSTER_PROGRAM_ID,
@@ -94,6 +103,8 @@ export interface ProgramWrapOptions {
   treasury: PublicKey;
   /** Minimalny kurs (jednostki DUSTER za 1 SOL) dla danej paczki. */
   minRate: (items: ConvertItem[]) => bigint;
+  /** Odzyskane depozyty tez zamieniamy na DUSTER (zamiast wyplacac je w SOL). */
+  rentToDuster?: boolean;
 }
 
 /**
@@ -101,15 +112,18 @@ export interface ProgramWrapOptions {
  * konta wSOL, a konto DUSTER program zaklada sam, wiec paczka to tylko
  * begin_convert, pozycje i finish_convert.
  */
-export function programPlanOptions(o: ProgramWrapOptions): Pick<BatchPlanOptions, "wrap" | "feeCollectedByProgram"> {
+export function programPlanOptions(o: ProgramWrapOptions): Pick<BatchPlanOptions, "wrap" | "feeCollectedByProgram" | "rentToDuster"> {
+  const all = o.rentToDuster ?? false;
   return {
     feeCollectedByProgram: true,
+    rentToDuster: all,
     wrap: (items) => {
-      const sells = items.some((it) => isSale(it.account.kind));
+      // Zamiana jest w paczce, gdy cos sprzedaje, a przy rencie w DUSTER zawsze.
+      const swaps = all || items.some((it) => isSale(it.account.kind));
       const closing = items.map((it) => it.account.address);
       return {
         before: [beginConvertInstruction(o.owner, o.refs.config, closing)],
-        after: [finishConvertInstruction(o.owner, o.refs, o.treasury, sells ? o.minRate(items) : 0n, sells)],
+        after: [finishConvertInstruction(o.owner, o.refs, o.treasury, swaps ? o.minRate(items) : 0n, swaps, all)],
       };
     },
   };
@@ -164,7 +178,8 @@ export function dusterQuoter(cpAmm: CpAmm, poolState: PoolState, tokenDecimals: 
 }
 
 export interface BatchQuote {
-  saleLamports: bigint;
+  /** SOL zamieniany w tej paczce na DUSTER: przychod ze sprzedazy, a przy rencie w DUSTER takze depozyty. */
+  swapLamports: bigint;
   /** Oczekiwana ilosc DUSTER z tej paczki, liczona po kolei (kazda paczka podnosi cene). */
   dusterOut: bigint;
   /** Minimalny kurs wpisywany do finish_convert. */
@@ -177,18 +192,17 @@ const RATE_SCALE = 1_000_000_000n;
  * Wycena paczek wysylanych jedna po drugiej. Kazda kolejna kupuje DUSTER
  * drozej, wiec jej kurs liczymy jako przyrost wyniku dla sumy narastajacej.
  */
-export function quoteBatches(batches: Pick<Batch, "expectedSaleLamports">[], quoter: DusterQuoter, slippageBps: number): BatchQuote[] {
+export function quoteBatches(swapLamports: bigint[], quoter: DusterQuoter, slippageBps: number): BatchQuote[] {
   let cumulative = 0n;
   let previousOut = 0n;
-  return batches.map((b) => {
-    const sale = b.expectedSaleLamports > 0n ? b.expectedSaleLamports : 0n;
-    if (sale === 0n) return { saleLamports: 0n, dusterOut: 0n, minRate: 0n };
-    cumulative += sale;
+  return swapLamports.map((amount) => {
+    if (amount <= 0n) return { swapLamports: 0n, dusterOut: 0n, minRate: 0n };
+    cumulative += amount;
     const total = quoter.out(cumulative);
     const dusterOut = total - previousOut;
     previousOut = total;
-    const rate = (dusterOut * RATE_SCALE) / sale;
-    return { saleLamports: sale, dusterOut, minRate: (rate * BigInt(10_000 - slippageBps)) / 10_000n };
+    const rate = (dusterOut * RATE_SCALE) / amount;
+    return { swapLamports: amount, dusterOut, minRate: (rate * BigInt(10_000 - slippageBps)) / 10_000n };
   });
 }
 
@@ -198,12 +212,12 @@ export function quoteBatches(batches: Pick<Batch, "expectedSaleLamports">[], quo
  * miala znaczenia.
  */
 export function applyMinRate(batches: Batch[], quotes: BatchQuote[]): bigint {
-  const rates = quotes.filter((q) => q.saleLamports > 0n).map((q) => q.minRate);
+  const rates = quotes.filter((q) => q.swapLamports > 0n).map((q) => q.minRate);
   const minRate = rates.length ? rates.reduce((a, b) => (b < a ? b : a)) : 0n;
   for (const b of batches) {
     for (const ix of b.instructions) {
-      if (ix.programId.equals(DUSTER_PROGRAM_ID) && ix.data.subarray(0, 8).equals(FINISH_CONVERT)) {
-        // Paczki bez sprzedazy nie maja konta DUSTER uzytkownika i zostaja z kursem 0.
+      if (isFinish(ix)) {
+        // Paczki bez zamiany nie maja konta DUSTER uzytkownika i zostaja z kursem 0.
         const hasSwap = ix.keys[5].isWritable;
         const data = Buffer.from(ix.data);
         data.writeBigUInt64LE(hasSwap ? minRate : 0n, 8);

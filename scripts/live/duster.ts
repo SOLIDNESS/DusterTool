@@ -10,6 +10,8 @@
  *   npx tsx scripts/live/duster.ts unstake           (tester)   wyplata calosci
  *   npx tsx scripts/live/duster.ts buyback           (crank)
  *   npx tsx scripts/live/duster.ts convert [limit]   (tester)   wymiana martwych tokenow przez program
+ *                                  --rent-duster    rent (po odjeciu fee) tez zamieniany na DUSTER
+ *                                  --skip <mint>    pomija konto tego tokena
  *
  * Wdrozenie wybiera zmienna DEPLOYMENT (domyslnie 'test').
  */
@@ -315,14 +317,17 @@ async function convert(conn: Connection, d: Deployment, limit: number) {
   // Tak jak aplikacja: tokeny sparowane z inna waluta niz SOL ida przez agregator Jupiter.
   const router = jupiterRouter(conn);
   const scan = await scanWallet(conn, tester.publicKey, { router });
-  const ctx = await loadPlanContext(conn, d, scan, { priorityMicroLamports: PRIORITY }, router);
+  const ctx = await loadPlanContext(conn, d, scan, { priorityMicroLamports: PRIORITY, rentToDuster: hasFlag("rent-duster") }, router);
   if (!ctx.lookupTables.length) console.log("uwaga: brak tabeli adresow, paczki beda mniejsze");
 
-  const items = await buildItems(ctx, scan.accounts.filter((a) => isConvertible(a, d)).slice(0, limit));
+  const skipAt = process.argv.indexOf("--skip");
+  const skip = skipAt >= 0 ? process.argv[skipAt + 1] : null;
+  const items = await buildItems(ctx, scan.accounts.filter((a) => isConvertible(a, d) && a.mint.toBase58() !== skip).slice(0, limit));
   if (!items.length) return console.log("brak kont do wymiany");
   const plan = planConversion(ctx, items);
   console.log(
-    `${plan.accounts} kont w ${plan.batches.length} transakcjach: rent ${sol(plan.rentLamports)} SOL (fee ${sol(plan.feeLamports)}), sprzedaz ${sol(plan.saleLamports)} SOL -> ok. ${ui(plan.dusterOut)} DUSTER`,
+    `${plan.accounts} kont w ${plan.batches.length} transakcjach: rent ${sol(plan.rentLamports)} SOL (fee ${sol(plan.feeLamports)}), sprzedaz ${sol(plan.saleLamports)} SOL, ` +
+      `na DUSTER ${sol(plan.swapLamports)} SOL${plan.rentToDuster ? " (z rentem)" : ""} -> ok. ${ui(plan.dusterOut)} DUSTER`,
   );
   for (const [i, b] of plan.batches.entries()) {
     const r = await simulateOrSend(conn, b.instructions, [tester], { send: SEND, lookupTables: b.lookupTables, label: `paczka ${i + 1}/${plan.batches.length}` });

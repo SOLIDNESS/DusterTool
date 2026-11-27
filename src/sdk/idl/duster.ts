@@ -289,7 +289,150 @@ export type Duster = {
         {
           "name": "userDuster",
           "docs": [
-            "Mozna je pominac, gdy transakcja tylko zamyka konta i nie ma przychodu do zamiany."
+            "Mozna je pominac, gdy nie ma nic do zamiany (same zamkniecia kont, rent wyplacany w SOL)."
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "poolAuthority",
+          "address": "HLnpSz9h2S4hiLQ43rnSD9XkcUThA7B8hQMKmDaiTLcC"
+        },
+        {
+          "name": "pool",
+          "writable": true
+        },
+        {
+          "name": "tokenAVault",
+          "writable": true
+        },
+        {
+          "name": "tokenBVault",
+          "writable": true
+        },
+        {
+          "name": "dusterMint"
+        },
+        {
+          "name": "wsolMint",
+          "address": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "name": "eventAuthority"
+        },
+        {
+          "name": "cpAmmProgram",
+          "address": "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+        },
+        {
+          "name": "tokenProgram",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associatedTokenProgram",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "minRate",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "finishConvertAll",
+      "discriminator": [
+        115,
+        60,
+        249,
+        163,
+        249,
+        198,
+        223,
+        224
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "session"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.duster_mint",
+                "account": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "treasury",
+          "writable": true
+        },
+        {
+          "name": "swapWsol",
+          "docs": [
+            "Konto wSOL programu: tedy przychod ze sprzedazy wchodzi do poola.",
+            "Uzytkownik nie potrzebuje wlasnego konta wSOL."
+          ],
+          "writable": true
+        },
+        {
+          "name": "userDuster",
+          "docs": [
+            "Mozna je pominac, gdy nie ma nic do zamiany (same zamkniecia kont, rent wyplacany w SOL)."
           ],
           "writable": true,
           "optional": true
@@ -898,7 +1041,7 @@ export type Duster = {
     {
       "code": 6013,
       "name": "missingSwapAccounts",
-      "msg": "There are sale proceeds to swap but the user's DUSTER account was not provided"
+      "msg": "There is SOL to swap but the user's DUSTER account was not provided"
     }
   ],
   "types": [

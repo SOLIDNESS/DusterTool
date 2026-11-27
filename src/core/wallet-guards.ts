@@ -34,7 +34,7 @@ import { accountsOf, MAX_COMPUTE_UNITS, MAX_LOADED_DATA_BYTES, priorityFee, type
 const BASE = 470; // adres programu Lighthouse i konta obecne w kazdej paczce (portfel, pool, skarbiec)
 const PER_EMPTY = 80;
 const PER_BURN = 138; // konto tokenow i mint
-const SWAP = 85; // konto DUSTER uzytkownika: pojawia sie, gdy paczka cos sprzedaje
+const SWAP = 85; // konto DUSTER uzytkownika: pojawia sie, gdy paczka kupuje DUSTER
 const FIRST_AMM_SALE = 280; // z kontami wspolnymi dla sprzedazy na PumpSwap (wSOL, statystyki)
 const NEXT_AMM_SALE = 172;
 const PER_CURVE_SALE = 262;
@@ -48,11 +48,14 @@ function writableAccounts(item: ConvertItem): number {
   return keys.size;
 }
 
-/** Miejsce do zostawienia w transakcji z podanymi pozycjami: bajty i konta (program Lighthouse). */
-export function guardReserve(items: ConvertItem[]): { bytes: number; accounts: number } {
+/**
+ * Miejsce do zostawienia w transakcji z podanymi pozycjami: bajty i konta (program Lighthouse).
+ * `swaps`: paczka kupuje DUSTER takze bez sprzedazy (rent zamieniany na DUSTER).
+ */
+export function guardReserve(items: ConvertItem[], swaps = false): { bytes: number; accounts: number } {
   let bytes = BASE;
   let amm = 0;
-  let sold = false;
+  let sold = swaps;
   for (const it of items) {
     const kind = it.account.kind;
     if (kind === "empty") bytes += PER_EMPTY;
@@ -73,12 +76,18 @@ export const MAX_INSTRUCTION_TRACE = 64;
 
 /**
  * Ile instrukcji kontrolnych dopisze Phantom: przed naszymi po jednej na kazde zapisywalne konto
- * poza platnikiem, po naszych po jednej na kazde zamykane konto, saldo SOL i (przy sprzedazy)
+ * poza platnikiem, po naszych po jednej na kazde zamykane konto, saldo SOL i (przy zakupie DUSTER)
  * saldo DUSTER. Zgadza sie co do sztuki z czterema zmierzonymi transakcjami (18, 20, 38 i 43 instrukcje).
+ * `swaps`: paczka kupuje DUSTER takze bez sprzedazy (rent zamieniany na DUSTER).
  */
-export function guardInstructions(writable: number, items: ConvertItem[]): number {
-  const sold = items.some((it) => isSale(it.account.kind));
+export function guardInstructions(writable: number, items: ConvertItem[], swaps = false): number {
+  const sold = swaps || items.some((it) => isSale(it.account.kind));
   return writable - 1 + items.length + 1 + (sold ? 1 : 0);
+}
+
+/** Czy transakcja kupuje DUSTER: finish_convert z kontem DUSTER uzytkownika. */
+function buysDuster(instructions: TransactionInstruction[]): boolean {
+  return instructions.some((ix) => ix.programId.equals(DUSTER_PROGRAM_ID) && ix.data.length >= 16 && (ix.keys[5]?.isWritable ?? false));
 }
 
 /**
@@ -116,7 +125,7 @@ export function traceLength(
 ): number {
   const own = instructions.filter((ix) => !ix.programId.equals(ComputeBudgetProgram.programId));
   const inner = opts.inner ?? own.reduce((s, ix) => s + innerEstimate(ix, opts.createsDusterAccount ?? false), 0);
-  return own.length + inner + guardInstructions(accountsOf(instructions, payer).writable, items);
+  return own.length + inner + guardInstructions(accountsOf(instructions, payer).writable, items, buysDuster(instructions));
 }
 
 /**

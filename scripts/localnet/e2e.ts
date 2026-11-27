@@ -574,6 +574,116 @@ async function main() {
   assert.equal(await conn.getAccountInfo(daveDuster), null, "bez przychodu konto DUSTER nie jest zakladane");
   ok("wymiana samych pustych kont: tylko fee od rentu, bez swapu");
 
+  // --- finish_convert_all: rent (po odjeciu fee) tez idzie na DUSTER ---
+  const junkFor = async (owner: PublicKey, count: number): Promise<PublicKey[]> => {
+    const out: PublicKey[] = [];
+    for (let i = 0; i < count; i++) {
+      const jm = Keypair.generate();
+      const ata = getAssociatedTokenAddressSync(jm.publicKey, owner);
+      await send(
+        [
+          SystemProgram.createAccount({
+            fromPubkey: admin.publicKey,
+            newAccountPubkey: jm.publicKey,
+            space: MINT_SIZE,
+            lamports: await conn.getMinimumBalanceForRentExemption(MINT_SIZE),
+            programId: TOKEN_PROGRAM_ID,
+          }),
+          createInitializeMint2Instruction(jm.publicKey, 6, admin.publicKey, null),
+          createAssociatedTokenAccountIdempotentInstruction(admin.publicKey, ata, owner, jm.publicKey),
+        ],
+        [admin, jm],
+      );
+      out.push(ata);
+    }
+    return out;
+  };
+  const quoteOut = async (lamports: number): Promise<bigint> => {
+    const state = await cpAmm.fetchPoolState(pool);
+    const at = await conn.getSlot();
+    const q = cpAmm.getQuote({
+      inAmount: new BN(lamports),
+      inputTokenMint: NATIVE_MINT,
+      slippage: 1,
+      poolState: state,
+      currentTime: (await conn.getBlockTime(at)) ?? Math.floor(Date.now() / 1000),
+      currentSlot: at,
+      tokenADecimal: TOKEN_DECIMALS,
+      tokenBDecimal: 9,
+    });
+    return BigInt(q.swapOutAmount.toString());
+  };
+  const feeOf = (rent: number) => Math.floor((rent * 500) / 10_000);
+  const txFeeOf = async (signature: string) =>
+    (await conn.getTransaction(signature, { maxSupportedTransactionVersion: 0, commitment: "confirmed" }))!.meta!.fee;
+
+  const erin = Keypair.generate();
+  await airdrop(erin.publicKey, 0.02);
+  const erinDuster = getAssociatedTokenAddressSync(mint.publicKey, erin.publicKey);
+  const erinJunk = await junkFor(erin.publicKey, 3);
+  const erinRent = rentPerAccount * 3;
+  const erinSale = 30_000_000;
+  const allIxs = async (owner: Keypair, closing: PublicKey[], saleLamports: number, minRate: bigint, withSwap = true) => [
+    await beginConvertIx(program, owner.publicKey, config, closing),
+    ...closing.map((a) => createCloseAccountInstruction(a, owner.publicKey, owner.publicKey)),
+    ...(saleLamports > 0 ? [SystemProgram.transfer({ fromPubkey: buyer.publicKey, toPubkey: owner.publicKey, lamports: saleLamports })] : []),
+    await finishConvertIx(program, owner.publicKey, refs, treasury.publicKey, new BN(minRate.toString()), withSwap, true),
+  ];
+
+  await expectFail(
+    "finish_convert_all bez konta DUSTER",
+    async () => send(await allIxs(erin, erinJunk, erinSale, 0n, false), [erin, buyer]),
+    /MissingSwapAccounts|0x177d/,
+  );
+  // Kwota zamiany: sprzedaz + rent - fee - depozyt zakladanego konta DUSTER.
+  const erinAmount = erinSale + erinRent - feeOf(erinRent) - dusterRent;
+  const erinExpected = await quoteOut(erinAmount);
+  const erinRate = (erinExpected * 1_000_000_000n) / BigInt(erinAmount);
+  await expectFail(
+    "finish_convert_all z kursem minimalnym ponad rynek",
+    async () => send(await allIxs(erin, erinJunk, erinSale, (erinRate * 110n) / 100n), [erin, buyer]),
+    /SlippageExceeded|0x1776|ExceededSlippage|custom program error/,
+  );
+
+  let erinBefore = await conn.getBalance(erin.publicKey);
+  let treasuryMark = await conn.getBalance(treasury.publicKey);
+  cfg = await fetchConfig();
+  let saleMark = cfg.totalSaleLamports.toNumber();
+  sig = await send(await allIxs(erin, erinJunk, erinSale, (erinRate * 99n) / 100n), [erin, buyer]);
+  assert.equal((await conn.getBalance(treasury.publicKey)) - treasuryMark, feeOf(erinRent), "fee od rentu w treasury (calosc w DUSTER)");
+  assert.equal(await tokenBalance(erinDuster), erinExpected, "DUSTER za sprzedaz i rent rowny wycenie poola");
+  assert.equal((await conn.getBalance(erin.publicKey)) - erinBefore, -(await txFeeOf(sig)), "saldo SOL: zmienia sie tylko o oplate sieciowa");
+  assert.equal(await tokenBalance(refs.swapWsol), 0n);
+  assert.equal(await conn.getAccountInfo(sessionPda(config, erin.publicKey)), null);
+  cfg = await fetchConfig();
+  assert.equal(cfg.totalSaleLamports.toNumber() - saleMark, erinAmount, "statystyka: caly zamieniony SOL");
+  console.log(`      calosc w DUSTER: ${erinAmount} lamportow -> ${(Number(erinExpected) / 1e6).toFixed(2)} DUSTER (${await cuUsed(sig)} CU)`);
+  ok("finish_convert_all: sprzedaz i rent zamienione na DUSTER, depozyt konta DUSTER z zamienianej kwoty");
+
+  // Same puste konta, konto DUSTER juz jest: na DUSTER idzie rent minus fee.
+  const erinJunk2 = await junkFor(erin.publicKey, 2);
+  const erinAmount2 = rentPerAccount * 2 - feeOf(rentPerAccount * 2);
+  const erinExpected2 = await quoteOut(erinAmount2);
+  const erinDusterBefore = await tokenBalance(erinDuster);
+  erinBefore = await conn.getBalance(erin.publicKey);
+  treasuryMark = await conn.getBalance(treasury.publicKey);
+  sig = await send(await allIxs(erin, erinJunk2, 0, ((erinExpected2 * 1_000_000_000n) / BigInt(erinAmount2) * 99n) / 100n), [erin]);
+  assert.equal((await conn.getBalance(treasury.publicKey)) - treasuryMark, feeOf(rentPerAccount * 2));
+  assert.equal((await tokenBalance(erinDuster)) - erinDusterBefore, erinExpected2, "DUSTER za sam rent");
+  assert.equal((await conn.getBalance(erin.publicKey)) - erinBefore, -(await txFeeOf(sig)));
+  ok("finish_convert_all: same puste konta, rent minus fee zamieniony na DUSTER");
+
+  // Jedno puste konto i brak konta DUSTER: rent nie pokrywa jego depozytu, wiec zostaje w SOL.
+  const frank = Keypair.generate();
+  await airdrop(frank.publicKey, 0.02);
+  const frankDuster = getAssociatedTokenAddressSync(mint.publicKey, frank.publicKey);
+  const frankJunk = await junkFor(frank.publicKey, 1);
+  const frankBefore = await conn.getBalance(frank.publicKey);
+  sig = await send(await allIxs(frank, frankJunk, 0, 0n), [frank]);
+  assert.equal(await conn.getAccountInfo(frankDuster), null, "konto DUSTER nie jest zakladane, gdy rent go nie pokrywa");
+  assert.equal((await conn.getBalance(frank.publicKey)) - frankBefore, rentPerAccount - feeOf(rentPerAccount) - (await txFeeOf(sig)));
+  ok("finish_convert_all: rent mniejszy niz depozyt konta DUSTER zostaje w SOL");
+
   console.log("\nWszystkie testy przeszly.");
 }
 

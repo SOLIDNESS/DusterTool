@@ -36,6 +36,11 @@ export interface PlanSettings {
   /** Limit dla transakcji z zamiana waluty kwotowania przez agregator (trasa zuzywa wiecej). */
   routedComputeUnitLimit: number;
   priorityMicroLamports: number;
+  /**
+   * Odzyskane depozyty (po odjeciu fee) tez ida na DUSTER, zamiast wracac w SOL. Wybor uzytkownika;
+   * mozna go zmienic na gotowym kontekscie bez ponownego wczytywania (withRentToDuster).
+   */
+  rentToDuster: boolean;
 }
 
 export const DEFAULT_PLAN_SETTINGS: PlanSettings = {
@@ -44,6 +49,7 @@ export const DEFAULT_PLAN_SETTINGS: PlanSettings = {
   computeUnitLimit: 600_000,
   routedComputeUnitLimit: 1_000_000,
   priorityMicroLamports: 20_000,
+  rentToDuster: false,
 };
 
 /** Jak portfel uzytkownika przyjmuje transakcje: od tego zalezy ich format i wielkosc paczek. */
@@ -76,6 +82,11 @@ export interface PlanContext {
   quoter: DusterQuoter;
   settings: PlanSettings;
   tx: TxProfile;
+}
+
+/** Ten sam kontekst z innym wyborem, w czym wraca rent (SOL albo DUSTER). */
+export function withRentToDuster(ctx: PlanContext, rentToDuster: boolean): PlanContext {
+  return ctx.settings.rentToDuster === rentToDuster ? ctx : { ...ctx, settings: { ...ctx.settings, rentToDuster } };
 }
 
 /** Konta, ktore wymiana potrafi obsluzyc. Samego DUSTER i wSOL nie ruszamy. */
@@ -152,6 +163,7 @@ function batchOptions(ctx: PlanContext, forceMinRate?: bigint): BatchPlanOptions
       refs: d.refs,
       treasury: d.treasury,
       minRate: () => forceMinRate ?? 0n,
+      rentToDuster: ctx.settings.rentToDuster,
     }),
   };
 }
@@ -223,8 +235,39 @@ export interface ConversionPlan {
   feeLamports: number;
   /** Przychod ze sprzedazy tokenow, w calosci zamieniany na DUSTER. */
   saleLamports: bigint;
+  /** Czy rent (po odjeciu fee) tez idzie na DUSTER. */
+  rentToDuster: boolean;
+  /** Laczna kwota SOL zamieniana na DUSTER: przychod ze sprzedazy, a przy rencie w DUSTER takze depozyty. */
+  swapLamports: bigint;
+  /**
+   * Depozyt konta DUSTER, ktore zalozy ta wymiana (0, gdy uzytkownik je ma albo nic nie kupuje).
+   * Przy rencie w SOL placi go uzytkownik ze swojego salda, przy rencie w DUSTER pomniejsza zamiane.
+   */
+  dusterAccountLamports: number;
   /** Oczekiwana ilosc DUSTER (najmniejsze jednostki). */
   dusterOut: bigint;
+}
+
+/** Najmniejsza kwota, jaka program zamienia na DUSTER (MIN_SWAP_LAMPORTS w programie). */
+const MIN_SWAP_LAMPORTS = 1_000n;
+
+/**
+ * Ile SOL kazda paczka zamieni na DUSTER. Przy rencie w DUSTER program zamienia caly przyrost
+ * salda uzytkownika: sprzedaz plus depozyty minus fee. Paczka, ktora zaklada konto DUSTER, placi
+ * jego depozyt z tej kwoty; jesli jej na to nie stac, program konta nie zaklada i rent tej paczki
+ * zostaje w SOL.
+ */
+function swapAmounts(ctx: PlanContext, batches: Batch[]): bigint[] {
+  let deposit = ctx.hasDusterAccount ? 0n : BigInt(ctx.tokenAccountRent);
+  return batches.map((b) => {
+    const sale = b.expectedSaleLamports > 0n ? b.expectedSaleLamports : 0n;
+    if (!ctx.settings.rentToDuster) return sale;
+    const gross = sale + BigInt(b.rentLamports - rentFee(b.rentLamports, ctx.rentFeeBps));
+    if (gross < deposit + MIN_SWAP_LAMPORTS) return 0n;
+    const amount = gross - deposit;
+    deposit = 0n;
+    return amount;
+  });
 }
 
 /**
@@ -241,9 +284,10 @@ export function planConversion(ctx: PlanContext, items: ConvertItem[], forceMinR
     const cost = BigInt(ctx.tokenAccountRent);
     orphan.expectedSaleLamports = orphan.expectedSaleLamports > cost ? orphan.expectedSaleLamports - cost : 0n;
   }
-  const quotes = quoteBatches(batches, ctx.quoter, ctx.settings.swapSlippageBps);
+  const quotes = quoteBatches(swapAmounts(ctx, batches), ctx.quoter, ctx.settings.swapSlippageBps);
   const minRate = forceMinRate ?? applyMinRate(batches, quotes);
   const rentLamports = batches.reduce((s, b) => s + b.rentLamports, 0);
+  const buys = quotes.some((q) => q.swapLamports > 0n);
   return {
     batches,
     quotes,
@@ -252,6 +296,9 @@ export function planConversion(ctx: PlanContext, items: ConvertItem[], forceMinR
     rentLamports,
     feeLamports: batches.reduce((s, b) => s + rentFee(b.rentLamports, ctx.rentFeeBps), 0),
     saleLamports: batches.reduce((s, b) => s + (b.expectedSaleLamports > 0n ? b.expectedSaleLamports : 0n), 0n),
+    rentToDuster: ctx.settings.rentToDuster,
+    swapLamports: quotes.reduce((s, q) => s + q.swapLamports, 0n),
+    dusterAccountLamports: buys && !ctx.hasDusterAccount ? ctx.tokenAccountRent : 0,
     dusterOut: quotes.reduce((s, q) => s + q.dusterOut, 0n),
   };
 }

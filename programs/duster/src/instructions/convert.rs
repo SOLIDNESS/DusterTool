@@ -8,6 +8,9 @@
 //! przyrostu czesc odpowiadajaca depozytom zostaje u uzytkownika (minus fee),
 //! a reszta, czyli faktyczny przychod ze sprzedazy, jest zamieniana na DUSTER
 //! na naszym poolu. Program nie musi wiedziec, gdzie tokeny zostaly sprzedane.
+//!
+//! `finish_convert_all` dziala tak samo, ale na DUSTER zamienia takze odzyskane
+//! depozyty (po odjeciu fee): uzytkownik wybiera, czy rent chce dostac w SOL, czy w DUSTER.
 
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::sysvar::instructions::{
@@ -59,7 +62,8 @@ pub fn begin_convert(ctx: Context<BeginConvert>) -> Result<()> {
     let mut found = false;
     while let Ok(ix) = load_instruction_at_checked(index, &ix_sysvar) {
         if ix.program_id == crate::ID
-            && ix.data.starts_with(crate::instruction::FinishConvert::DISCRIMINATOR)
+            && (ix.data.starts_with(crate::instruction::FinishConvert::DISCRIMINATOR)
+                || ix.data.starts_with(crate::instruction::FinishConvertAll::DISCRIMINATOR))
             && ix.accounts.first().map(|a| a.pubkey) == Some(user)
         {
             found = true;
@@ -124,7 +128,7 @@ pub struct FinishConvert<'info> {
     #[account(mut, address = config.swap_wsol)]
     pub swap_wsol: Box<Account<'info, TokenAccount>>,
     /// CHECK: konto DUSTER uzytkownika; sprawdzane w kodzie i zakladane tutaj, jesli go nie ma.
-    /// Mozna je pominac, gdy transakcja tylko zamyka konta i nie ma przychodu do zamiany.
+    /// Mozna je pominac, gdy nie ma nic do zamiany (same zamkniecia kont, rent wyplacany w SOL).
     #[account(mut)]
     pub user_duster: Option<UncheckedAccount<'info>>,
 
@@ -184,13 +188,20 @@ fn duster_balance(account: &AccountInfo, user: &Pubkey, mint: &Pubkey) -> Result
 /// Kwota SOL jest znana dopiero w trakcie transakcji, wiec zabezpieczenie przed
 /// poslizgiem podajemy jako kurs, a nie jako kwote.
 pub fn finish_convert(ctx: Context<FinishConvert>, min_rate: u64) -> Result<()> {
+    finish(ctx, min_rate, false)
+}
+
+/// Jak `finish_convert`, ale na DUSTER idzie caly przyrost salda po odjeciu fee:
+/// przychod ze sprzedazy razem z odzyskanymi depozytami.
+pub fn finish_convert_all(ctx: Context<FinishConvert>, min_rate: u64) -> Result<()> {
+    finish(ctx, min_rate, true)
+}
+
+fn finish(ctx: Context<FinishConvert>, min_rate: u64, convert_rent: bool) -> Result<()> {
     require!(!ctx.accounts.config.paused, DusterError::Paused);
 
-    let gross = ctx
-        .accounts
-        .user
-        .lamports()
-        .saturating_sub(ctx.accounts.session.start_lamports);
+    let start = ctx.accounts.session.start_lamports;
+    let gross = ctx.accounts.user.lamports().saturating_sub(start);
     let rent_part = gross.min(ctx.accounts.session.rent_lamports);
     let sale = gross - rent_part;
     let fee = bps_of(rent_part, ctx.accounts.config.rent_fee_bps);
@@ -210,7 +221,17 @@ pub fn finish_convert(ctx: Context<FinishConvert>, min_rate: u64) -> Result<()> 
 
     let mut duster_out = 0u64;
     let mut swapped = 0u64;
-    if sale >= MIN_SWAP_LAMPORTS {
+    let wanted = if convert_rent { gross - fee } else { sale };
+    // Przy zamianie calosci depozyt nowego konta DUSTER idzie z zamienianej kwoty. Gdy ta go nie
+    // pokrywa, konta nie zakladamy i rent zostaje u uzytkownika w SOL.
+    let affordable = !convert_rent
+        || match ctx.accounts.user_duster.as_ref() {
+            Some(account) if account.data_is_empty() => {
+                wanted >= Rent::get()?.minimum_balance(TokenAccount::LEN).saturating_add(MIN_SWAP_LAMPORTS)
+            }
+            _ => true,
+        };
+    if wanted >= MIN_SWAP_LAMPORTS && affordable {
         let Some(user_duster) = ctx.accounts.user_duster.as_ref() else {
             return err!(DusterError::MissingSwapAccounts);
         };
@@ -233,6 +254,17 @@ pub fn finish_convert(ctx: Context<FinishConvert>, min_rate: u64) -> Result<()> 
         }
         let before = duster_balance(user_duster, &user_key, &mint_key)?;
 
+        // Przy zamianie calosci liczymy kwote dopiero teraz: depozyt zalozonego przed chwila konta
+        // DUSTER pomniejsza zamiane, a saldo SOL uzytkownika nie spada ponizej poczatkowego.
+        let amount = if convert_rent {
+            ctx.accounts.user.lamports().saturating_sub(start)
+        } else {
+            sale
+        };
+        if amount < MIN_SWAP_LAMPORTS {
+            return finalize(ctx, rent_part, fee, 0, 0);
+        }
+
         // SOL -> wSOL na koncie programu; swap zabiera stamtad dokladnie te sama kwote.
         system_program::transfer(
             CpiContext::new(
@@ -242,7 +274,7 @@ pub fn finish_convert(ctx: Context<FinishConvert>, min_rate: u64) -> Result<()> 
                     to: ctx.accounts.swap_wsol.to_account_info(),
                 },
             ),
-            sale,
+            amount,
         )?;
         token::sync_native(CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
@@ -251,7 +283,7 @@ pub fn finish_convert(ctx: Context<FinishConvert>, min_rate: u64) -> Result<()> 
             },
         ))?;
 
-        let min_out = u64::try_from(sale as u128 * min_rate as u128 / RATE_SCALE)
+        let min_out = u64::try_from(amount as u128 * min_rate as u128 / RATE_SCALE)
             .map_err(|_| DusterError::MathOverflow)?;
         let bump = [ctx.accounts.config.bump];
         let seeds: &[&[u8]] = &[CONFIG_SEED, mint_key.as_ref(), &bump];
@@ -270,16 +302,22 @@ pub fn finish_convert(ctx: Context<FinishConvert>, min_rate: u64) -> Result<()> 
                 event_authority: ctx.accounts.event_authority.to_account_info(),
                 program: ctx.accounts.cp_amm_program.to_account_info(),
             },
-            sale,
+            amount,
             min_out,
             &[seeds],
         )?;
         duster_out = duster_balance(user_duster, &user_key, &mint_key)?.saturating_sub(before);
         // cp-amm sam pilnuje minimum, ale wynik sprawdzamy tez po swojej stronie.
         require!(duster_out >= min_out, DusterError::SlippageExceeded);
-        swapped = sale;
+        swapped = amount;
     }
 
+    finalize(ctx, rent_part, fee, swapped, duster_out)
+}
+
+/// Statystyki i zdarzenie. `swapped` to SOL zamieniony na DUSTER dla uzytkownika
+/// (przychod ze sprzedazy, a w finish_convert_all takze rent).
+fn finalize(ctx: Context<FinishConvert>, rent_part: u64, fee: u64, swapped: u64, duster_out: u64) -> Result<()> {
     let accounts_closed = ctx.accounts.session.accounts;
     let c = &mut ctx.accounts.config;
     c.total_conversions = c.total_conversions.saturating_add(1);

@@ -17,6 +17,7 @@ import {
   blockhash as toBlockhash,
   compileTransaction,
   createTransactionMessage,
+  getCompiledTransactionMessageDecoder,
   getSignatureFromTransaction,
   getTransactionDecoder,
   getTransactionEncoder,
@@ -105,6 +106,12 @@ export function compileV1(
 /** Sygnatura (identyfikator) podpisanej transakcji v1. */
 export function signatureOfV1(signed: Uint8Array): string {
   return getSignatureFromTransaction(getTransactionDecoder().decode(signed) as Parameters<typeof getSignatureFromTransaction>[0]);
+}
+
+/** Blockhash wpisany w podpisana transakcje v1 (portfel moze go podmienic przed podpisem). */
+export function blockhashOfV1(signed: Uint8Array): string {
+  const message = getCompiledTransactionMessageDecoder().decode(getTransactionDecoder().decode(signed).messageBytes);
+  return (message as unknown as { lifetimeToken: string }).lifetimeToken;
 }
 
 /** Konta transakcji: wszystkie rozne adresy (z programami i platnikiem) oraz ile z nich jest zapisywalnych. */

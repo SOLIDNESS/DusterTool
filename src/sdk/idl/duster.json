@@ -283,7 +283,150 @@
         {
           "name": "user_duster",
           "docs": [
-            "Mozna je pominac, gdy transakcja tylko zamyka konta i nie ma przychodu do zamiany."
+            "Mozna je pominac, gdy nie ma nic do zamiany (same zamkniecia kont, rent wyplacany w SOL)."
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "pool_authority",
+          "address": "HLnpSz9h2S4hiLQ43rnSD9XkcUThA7B8hQMKmDaiTLcC"
+        },
+        {
+          "name": "pool",
+          "writable": true
+        },
+        {
+          "name": "token_a_vault",
+          "writable": true
+        },
+        {
+          "name": "token_b_vault",
+          "writable": true
+        },
+        {
+          "name": "duster_mint"
+        },
+        {
+          "name": "wsol_mint",
+          "address": "So11111111111111111111111111111111111111112"
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "cp_amm_program",
+          "address": "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "min_rate",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "finish_convert_all",
+      "discriminator": [
+        115,
+        60,
+        249,
+        163,
+        249,
+        198,
+        223,
+        224
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "session"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.duster_mint",
+                "account": "Config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "treasury",
+          "writable": true
+        },
+        {
+          "name": "swap_wsol",
+          "docs": [
+            "Konto wSOL programu: tedy przychod ze sprzedazy wchodzi do poola.",
+            "Uzytkownik nie potrzebuje wlasnego konta wSOL."
+          ],
+          "writable": true
+        },
+        {
+          "name": "user_duster",
+          "docs": [
+            "Mozna je pominac, gdy nie ma nic do zamiany (same zamkniecia kont, rent wyplacany w SOL)."
           ],
           "writable": true,
           "optional": true
@@ -892,7 +1035,7 @@
     {
       "code": 6013,
       "name": "MissingSwapAccounts",
-      "msg": "There are sale proceeds to swap but the user's DUSTER account was not provided"
+      "msg": "There is SOL to swap but the user's DUSTER account was not provided"
     }
   ],
   "types": [

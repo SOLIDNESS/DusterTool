@@ -185,6 +185,7 @@ export function beginConvertIx(
  * `withSwap = false` pomija konto DUSTER uzytkownika: dla transakcji, ktore
  * tylko zamykaja konta i nie maja przychodu do zamiany. Konta DUSTER nie trzeba
  * zakladac wczesniej; program robi to sam przy pierwszej wymianie.
+ * `all = true` wywoluje finish_convert_all: na DUSTER idzie takze odzyskany rent (po odjeciu fee).
  */
 export function finishConvertIx(
   program: Program<Duster>,
@@ -193,9 +194,9 @@ export function finishConvertIx(
   treasury: PublicKey,
   minRate: BN,
   withSwap = true,
+  all = false,
 ): Promise<TransactionInstruction> {
-  return program.methods
-    .finishConvert(minRate)
+  return (all ? program.methods.finishConvertAll(minRate) : program.methods.finishConvert(minRate))
     .accountsStrict({
       user,
       config: r.config,

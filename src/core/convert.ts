@@ -357,6 +357,8 @@ export interface BatchPlanOptions {
    * zawiera osobnego przelewu, a `feeLamports` sluzy tylko do podgladu.
    */
   feeCollectedByProgram?: boolean;
+  /** Kazda paczka kupuje DUSTER, takze bez sprzedazy: odzyskane depozyty ida na DUSTER. */
+  rentToDuster?: boolean;
 }
 
 export interface Batch {
@@ -491,7 +493,7 @@ export function planBatches(items: ConvertItem[], o: BatchPlanOptions): Batch[] 
     const m = measureBatch(list, o);
     if (!m || m.bytes > max.bytes || m.accounts > max.accounts) return null;
     if (list.length === 1 && !o.walletGuards) return m;
-    const reserve = o.walletGuards ? guardReserve(list) : { bytes: o.reserveBytes ?? 0, accounts: o.reserveAccounts ?? 0 };
+    const reserve = o.walletGuards ? guardReserve(list, o.rentToDuster) : { bytes: o.reserveBytes ?? 0, accounts: o.reserveAccounts ?? 0 };
     const roomy =
       m.bytes + reserve.bytes <= max.bytes &&
       m.accounts + reserve.accounts <= max.accounts &&

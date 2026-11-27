@@ -28,6 +28,6 @@ pub enum DusterError {
     MathOverflow,
     #[msg("Deposit is too small to receive a single share")]
     ZeroShares,
-    #[msg("There are sale proceeds to swap but the user's DUSTER account was not provided")]
+    #[msg("There is SOL to swap but the user's DUSTER account was not provided")]
     MissingSwapAccounts,
 }

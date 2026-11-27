@@ -32,6 +32,10 @@ pub mod duster {
         instructions::convert::finish_convert(ctx, min_rate)
     }
 
+    pub fn finish_convert_all(ctx: Context<FinishConvert>, min_rate: u64) -> Result<()> {
+        instructions::convert::finish_convert_all(ctx, min_rate)
+    }
+
     pub fn buyback(ctx: Context<Buyback>, min_duster_out: u64) -> Result<()> {
         instructions::buyback::buyback(ctx, min_duster_out)
     }
