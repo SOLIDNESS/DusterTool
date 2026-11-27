@@ -45,7 +45,7 @@ export interface PlanSettings {
 
 export const DEFAULT_PLAN_SETTINGS: PlanSettings = {
   sellSlippagePct: 2,
-  swapSlippageBps: 300,
+  swapSlippageBps: 1500,
   computeUnitLimit: 600_000,
   routedComputeUnitLimit: 1_000_000,
   priorityMicroLamports: 20_000,
